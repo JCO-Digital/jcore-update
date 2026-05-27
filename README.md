@@ -61,3 +61,27 @@ $isValid = $updater->isLicenseValid($licenseKey);
 - `204 No Content` is treated as a valid “no update” state.
 - License keys are never stored in cache keys directly (hashes are used).
 - UI elements (settings pages, admin notices, forms) remain the host plugin’s responsibility.
+
+## Development
+
+### Code Quality
+
+Run `phpcs` to check coding standards:
+
+```bash
+composer lint
+```
+
+To automatically fix most coding standard issues:
+
+```bash
+composer fix
+```
+
+### Testing
+
+The library uses PHPUnit for testing. Run the tests with:
+
+```bash
+composer test
+```

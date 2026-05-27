@@ -1,4 +1,9 @@
 <?php
+/**
+ * Client for the JCORE Update API.
+ *
+ * @package Jcore\Update\Client
+ */
 
 declare(strict_types=1);
 
@@ -10,10 +15,26 @@ use Jcore\Update\Support\LoggerInterface;
 use Jcore\Update\Support\NullLogger;
 use Jcore\Update\ValueObject\UpdatePayload;
 
+/**
+ * Class UpdateApiClient
+ *
+ * Handles HTTP requests to the JCORE Update API.
+ */
 final class UpdateApiClient {
 
+	/**
+	 * The logger instance.
+	 *
+	 * @var LoggerInterface
+	 */
 	private LoggerInterface $logger;
 
+	/**
+	 * UpdateApiClient constructor.
+	 *
+	 * @param UpdateConfig         $config The configuration.
+	 * @param LoggerInterface|null $logger Optional logger.
+	 */
 	public function __construct(
 		private readonly UpdateConfig $config,
 		?LoggerInterface $logger = null,
@@ -21,6 +42,14 @@ final class UpdateApiClient {
 		$this->logger = $logger ?? $this->config->logger ?? new NullLogger();
 	}
 
+	/**
+	 * Checks for updates for the plugin.
+	 *
+	 * @param string      $installedVersion The currently installed version.
+	 * @param string|null $licenseKey       Optional license key.
+	 *
+	 * @return UpdateCheckResult
+	 */
 	public function checkForUpdate( string $installedVersion, ?string $licenseKey = null ): UpdateCheckResult {
 		if ( ! $this->hasWordPressHttpApi() ) {
 			return UpdateCheckResult::failure( 'transport_error', 'WordPress HTTP API is unavailable.' );
@@ -81,6 +110,13 @@ final class UpdateApiClient {
 		return UpdateCheckResult::update( $payload );
 	}
 
+	/**
+	 * Validates a license key with the API.
+	 *
+	 * @param string $licenseKey The license key to validate.
+	 *
+	 * @return LicenseValidationResult
+	 */
 	public function validateLicense( string $licenseKey ): LicenseValidationResult {
 		if ( ! $this->hasWordPressHttpApi() ) {
 			return LicenseValidationResult::failure( 'transport_error', 'WordPress HTTP API is unavailable.' );
@@ -92,7 +128,7 @@ final class UpdateApiClient {
 
 		$url = $this->config->normalizedApiBaseUrl() . '/licenses/validate';
 
-		$encoded = \json_encode(
+		$encoded = \wp_json_encode(
 			array(
 				'slug'        => $this->config->slug,
 				'license_key' => $licenseKey,
@@ -152,6 +188,14 @@ final class UpdateApiClient {
 		return LicenseValidationResult::success( $data['valid'] );
 	}
 
+	/**
+	 * Builds the update check URL.
+	 *
+	 * @param string      $installedVersion The installed version.
+	 * @param string|null $licenseKey       The license key.
+	 *
+	 * @return string
+	 */
 	private function buildUpdateCheckUrl( string $installedVersion, ?string $licenseKey ): string {
 		$baseUrl = $this->config->normalizedApiBaseUrl() . '/update-check';
 
@@ -172,7 +216,11 @@ final class UpdateApiClient {
 	}
 
 	/**
-	 * @param array<string, mixed> $args
+	 * Filters the HTTP arguments.
+	 *
+	 * @param array<string, mixed> $args    The arguments.
+	 * @param string               $context The context.
+	 *
 	 * @return array<string, mixed>
 	 */
 	private function filterHttpArgs( array $args, string $context ): array {
@@ -193,6 +241,11 @@ final class UpdateApiClient {
 		return $args;
 	}
 
+	/**
+	 * Checks if the WordPress HTTP API is available.
+	 *
+	 * @return bool
+	 */
 	private function hasWordPressHttpApi(): bool {
 		return \function_exists( 'wp_remote_get' )
 			&& \function_exists( 'wp_remote_post' )

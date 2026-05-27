@@ -3,6 +3,8 @@
  * Example plugin bootstrap for jcore-update.
  *
  * Copy patterns from this file into your own plugin bootstrap/settings code.
+ *
+ * @package Jcore\Update\Examples
  */
 
 declare(strict_types=1);
@@ -27,12 +29,19 @@ if ( file_exists( $autoloadPath ) ) {
 }
 
 /**
+ * Gets the updater instance.
+ *
  * @return PluginUpdateHooks|null
  */
 function my_plugin_get_updater(): ?PluginUpdateHooks {
 	return $GLOBALS['my_plugin_updater'] ?? null;
 }
 
+/**
+ * Bootstraps the updates.
+ *
+ * @return void
+ */
 function my_plugin_bootstrap_updates(): void {
 	$storedLicense = get_option( MY_PLUGIN_LICENSE_OPTION );
 	$licenseKey    = is_string( $storedLicense ) && $storedLicense !== '' ? $storedLicense : null;
@@ -67,6 +76,11 @@ function my_plugin_register_license_settings_page(): void {
 }
 add_action( 'admin_menu', 'my_plugin_register_license_settings_page' );
 
+/**
+ * Registers the license setting.
+ *
+ * @return void
+ */
 function my_plugin_register_license_setting(): void {
 	register_setting(
 		'my_plugin_license',
@@ -81,7 +95,11 @@ function my_plugin_register_license_setting(): void {
 add_action( 'admin_init', 'my_plugin_register_license_setting' );
 
 /**
- * @param mixed $raw
+ * Sanitizes the license key and validates it.
+ *
+ * @param mixed $raw The raw input.
+ *
+ * @return string
  */
 function my_plugin_sanitize_license_key( mixed $raw ): string {
 	$licenseKey = trim( (string) $raw );
@@ -123,6 +141,11 @@ function my_plugin_sanitize_license_key( mixed $raw ): string {
 	return $licenseKey;
 }
 
+/**
+ * Renders the license settings page.
+ *
+ * @return void
+ */
 function my_plugin_render_license_settings_page(): void {
 	?>
 	<div class="wrap">

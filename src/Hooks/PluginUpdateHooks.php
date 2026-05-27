@@ -1,4 +1,9 @@
 <?php
+/**
+ * Hooks for WordPress plugin updates.
+ *
+ * @package Jcore\Update\Hooks
+ */
 
 declare(strict_types=1);
 
@@ -13,11 +18,41 @@ use Jcore\Update\ValueObject\PluginInfoPayload;
 use Jcore\Update\ValueObject\UpdatePayload;
 use stdClass;
 
+/**
+ * Class PluginUpdateHooks
+ *
+ * Connects the UpdateApiClient to WordPress hooks.
+ */
 final class PluginUpdateHooks {
 
+	/**
+	 * The logger instance.
+	 *
+	 * @var LoggerInterface
+	 */
 	private LoggerInterface $logger;
+
+	/**
+	 * Whether the hooks have been registered.
+	 *
+	 * @var bool
+	 */
 	private bool $registered = false;
 
+	/**
+	 * The API client.
+	 *
+	 * @var UpdateApiClient
+	 */
+	private UpdateApiClient $client;
+
+	/**
+	 * PluginUpdateHooks constructor.
+	 *
+	 * @param UpdateConfig         $config The configuration.
+	 * @param UpdateApiClient|null $client Optional API client.
+	 * @param LoggerInterface|null $logger Optional logger.
+	 */
 	public function __construct(
 		private readonly UpdateConfig $config,
 		?UpdateApiClient $client = null,
@@ -27,8 +62,11 @@ final class PluginUpdateHooks {
 		$this->client = $client ?? new UpdateApiClient( $this->config, $this->logger );
 	}
 
-	private UpdateApiClient $client;
-
+	/**
+	 * Registers the hooks.
+	 *
+	 * @return void
+	 */
 	public function register(): void {
 		if ( $this->registered || ! \function_exists( 'add_filter' ) ) {
 			return;
@@ -40,6 +78,11 @@ final class PluginUpdateHooks {
 		$this->registered = true;
 	}
 
+	/**
+	 * Unregisters the hooks.
+	 *
+	 * @return void
+	 */
 	public function unregister(): void {
 		if ( ! $this->registered || ! \function_exists( 'remove_filter' ) ) {
 			return;
@@ -52,7 +95,10 @@ final class PluginUpdateHooks {
 	}
 
 	/**
-	 * @param stdClass|mixed $transient
+	 * Filter for `pre_set_site_transient_update_plugins`.
+	 *
+	 * @param stdClass|mixed $transient The transient value.
+	 *
 	 * @return stdClass|mixed
 	 */
 	public function checkUpdate( mixed $transient ): mixed {
@@ -122,9 +168,12 @@ final class PluginUpdateHooks {
 	}
 
 	/**
-	 * @param object|mixed $result
-	 * @param string|mixed $action
-	 * @param object|mixed $args
+	 * Filter for `plugins_api`.
+	 *
+	 * @param object|mixed $result The result object.
+	 * @param string|mixed $action The action being performed.
+	 * @param object|mixed $args   Arguments for the action.
+	 *
 	 * @return object|mixed
 	 */
 	public function pluginPopup( mixed $result, mixed $action, mixed $args ): mixed {
@@ -136,7 +185,18 @@ final class PluginUpdateHooks {
 			return $result;
 		}
 
-		$licenseKey   = $this->resolveLicenseKey();
+		$licenseKey = $this->resolveLicenseKey();
+		$cacheKey   = $this->updateCacheKey( $this->config->version, $licenseKey );
+		$cached     = $this->getSiteTransient( $cacheKey );
+
+		if ( \is_array( $cached ) && ( $cached['state'] ?? null ) === 'update' && \is_array( $cached['payload'] ?? null ) ) {
+			$payload = UpdatePayload::fromApiResponse( $cached['payload'] );
+			if ( $payload !== null ) {
+				$info = PluginInfoPayload::fromUpdatePayload( $this->config->slug, $payload );
+				return $this->toPluginInfoObject( $info );
+			}
+		}
+
 		$updateResult = $this->client->checkForUpdate( $this->config->version, $licenseKey );
 
 		if ( ! $updateResult->success || $updateResult->noUpdate || $updateResult->payload === null ) {
@@ -147,6 +207,14 @@ final class PluginUpdateHooks {
 		return $this->toPluginInfoObject( $info );
 	}
 
+	/**
+	 * Validates a license key.
+	 *
+	 * @param string $licenseKey   The license key.
+	 * @param bool   $forceRefresh Whether to force a refresh.
+	 *
+	 * @return LicenseValidationResult
+	 */
 	public function validateLicense( string $licenseKey, bool $forceRefresh = false ): LicenseValidationResult {
 		$trimmed = \trim( $licenseKey );
 
@@ -173,10 +241,23 @@ final class PluginUpdateHooks {
 		return $result;
 	}
 
+	/**
+	 * Checks if a license key is valid.
+	 *
+	 * @param string $licenseKey   The license key.
+	 * @param bool   $forceRefresh Whether to force a refresh.
+	 *
+	 * @return bool
+	 */
 	public function isLicenseValid( string $licenseKey, bool $forceRefresh = false ): bool {
 		return $this->validateLicense( $licenseKey, $forceRefresh )->valid;
 	}
 
+	/**
+	 * Resolves the license key to use.
+	 *
+	 * @return string|null
+	 */
 	private function resolveLicenseKey(): ?string {
 		if ( $this->config->licenseProvider !== null ) {
 			$provided = $this->config->licenseProvider->getLicenseKey();
@@ -188,6 +269,11 @@ final class PluginUpdateHooks {
 		return $this->config->licenseKey;
 	}
 
+	/**
+	 * Gets the plugin basename.
+	 *
+	 * @return string
+	 */
 	private function pluginBasename(): string {
 		if ( \function_exists( 'plugin_basename' ) ) {
 			return \plugin_basename( $this->config->pluginFile );
@@ -196,16 +282,35 @@ final class PluginUpdateHooks {
 		return \basename( \dirname( $this->config->pluginFile ) ) . '/' . \basename( $this->config->pluginFile );
 	}
 
+	/**
+	 * Gets the update cache key.
+	 *
+	 * @param string      $installedVersion The installed version.
+	 * @param string|null $licenseKey       The license key.
+	 *
+	 * @return string
+	 */
 	private function updateCacheKey( string $installedVersion, ?string $licenseKey ): string {
 		$licenseHash = $licenseKey === null || $licenseKey === '' ? 'none' : \hash( 'sha256', $licenseKey );
 		return 'jcore_update_' . \md5( $this->config->slug . '|' . $installedVersion . '|' . $licenseHash );
 	}
 
+	/**
+	 * Gets the license validation cache key.
+	 *
+	 * @param string $licenseKey The license key.
+	 *
+	 * @return string
+	 */
 	private function licenseValidationCacheKey( string $licenseKey ): string {
 		return 'jcore_license_' . \md5( $this->config->slug . '|' . \hash( 'sha256', $licenseKey ) );
 	}
 
 	/**
+	 * Wrapper for `get_site_transient`.
+	 *
+	 * @param string $key The transient key.
+	 *
 	 * @return mixed
 	 */
 	private function getSiteTransient( string $key ): mixed {
@@ -217,7 +322,13 @@ final class PluginUpdateHooks {
 	}
 
 	/**
-	 * @param mixed $value
+	 * Wrapper for `set_site_transient`.
+	 *
+	 * @param string $key   The transient key.
+	 * @param mixed  $value The value to set.
+	 * @param int    $ttl   The time to live in seconds.
+	 *
+	 * @return void
 	 */
 	private function setSiteTransient( string $key, mixed $value, int $ttl ): void {
 		if ( ! \function_exists( 'set_site_transient' ) ) {
@@ -227,6 +338,15 @@ final class PluginUpdateHooks {
 		\set_site_transient( $key, $value, $ttl );
 	}
 
+	/**
+	 * Marks the plugin as having no update.
+	 *
+	 * @param stdClass $transient        The transient object.
+	 * @param string   $pluginBasename   The plugin basename.
+	 * @param string   $installedVersion The installed version.
+	 *
+	 * @return stdClass
+	 */
 	private function markNoUpdate( stdClass $transient, string $pluginBasename, string $installedVersion ): stdClass {
 		if ( ! isset( $transient->no_update ) || ! \is_array( $transient->no_update ) ) {
 			$transient->no_update = array();
@@ -245,6 +365,14 @@ final class PluginUpdateHooks {
 		return $transient;
 	}
 
+	/**
+	 * Converts an UpdatePayload to a WordPress update response object.
+	 *
+	 * @param UpdatePayload $payload        The payload.
+	 * @param string        $pluginBasename The plugin basename.
+	 *
+	 * @return stdClass
+	 */
 	private function toUpdateResponseObject( UpdatePayload $payload, string $pluginBasename ): stdClass {
 		$response               = new stdClass();
 		$response->id           = $this->config->slug;
@@ -268,6 +396,13 @@ final class PluginUpdateHooks {
 		return $response;
 	}
 
+	/**
+	 * Converts a PluginInfoPayload to a WordPress plugin information object.
+	 *
+	 * @param PluginInfoPayload $info The payload.
+	 *
+	 * @return stdClass
+	 */
 	private function toPluginInfoObject( PluginInfoPayload $info ): stdClass {
 		$object                = new stdClass();
 		$object->name          = $info->name;
