@@ -1,4 +1,9 @@
 <?php
+/**
+ * Tests for UpdatePayload.
+ *
+ * @package Jcore\Update\Tests
+ */
 
 declare(strict_types=1);
 
@@ -7,8 +12,14 @@ namespace Jcore\Update\Tests;
 use Jcore\Update\ValueObject\UpdatePayload;
 use PHPUnit\Framework\TestCase;
 
+/**
+ * Class UpdatePayloadTest
+ */
 class UpdatePayloadTest extends TestCase {
 
+	/**
+	 * Test parsing from API response.
+	 */
 	public function testFromApiResponse(): void {
 		$data = array(
 			'new_version'  => '2.0.0',
@@ -44,6 +55,9 @@ class UpdatePayloadTest extends TestCase {
 		$this->assertSame( 'My Plugin', $payload->name );
 	}
 
+	/**
+	 * Test parsing from minimal API response.
+	 */
 	public function testFromApiResponseMinimal(): void {
 		$data = array(
 			'new_version' => '2.0.0',
@@ -56,11 +70,17 @@ class UpdatePayloadTest extends TestCase {
 		$this->assertNull( $payload->package );
 	}
 
+	/**
+	 * Test parsing from invalid API response.
+	 */
 	public function testFromApiResponseInvalid(): void {
 		$this->assertNull( UpdatePayload::fromApiResponse( array() ) );
 		$this->assertNull( UpdatePayload::fromApiResponse( array( 'new_version' => '' ) ) );
 	}
 
+	/**
+	 * Test conversion to array.
+	 */
 	public function testToArray(): void {
 		$payload = new UpdatePayload(
 			newVersion: '2.0.0',
