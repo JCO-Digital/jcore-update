@@ -11,6 +11,7 @@ declare(strict_types=1);
 
 use Jcore\Update\Config\UpdateConfig;
 use Jcore\Update\Hooks\PluginUpdateHooks;
+use Jcore\Update\Support\PluginHelper;
 use Jcore\Update\Support\WordPressLogger;
 
 if ( ! defined( 'ABSPATH' ) ) {
@@ -19,7 +20,6 @@ if ( ! defined( 'ABSPATH' ) ) {
 
 // Adjust these for your plugin.
 const MY_PLUGIN_SLUG           = 'my-plugin-slug';
-const MY_PLUGIN_VERSION        = '1.0.0';
 const MY_PLUGIN_LICENSE_OPTION = 'my_plugin_license_key';
 
 // If your plugin bundles composer dependencies.
@@ -49,7 +49,7 @@ function my_plugin_bootstrap_updates(): void {
 	$config = new UpdateConfig(
 		pluginFile: __FILE__,
 		slug: MY_PLUGIN_SLUG,
-		version: MY_PLUGIN_VERSION,
+		version: PluginHelper::getVersion( __FILE__ ),
 		apiBaseUrl: 'https://api.example.com/v1',
 		licenseKey: $licenseKey,
 		logger: new WordPressLogger( '[my-plugin-updater]' ),

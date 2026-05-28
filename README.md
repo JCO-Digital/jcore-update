@@ -13,11 +13,12 @@ composer require jcodigital/jcore-update
 ```php
 use Jcore\Update\Config\UpdateConfig;
 use Jcore\Update\Hooks\PluginUpdateHooks;
+use Jcore\Update\Support\PluginHelper;
 
 $config = new UpdateConfig(
     pluginFile: __FILE__,
     slug: 'my-plugin-slug',
-    version: '1.0.0',
+    version: PluginHelper::getVersion(__FILE__),
     apiBaseUrl: 'https://api.example.com/v1',
     licenseKey: get_option('my_plugin_license_key') ?: null,
 );
