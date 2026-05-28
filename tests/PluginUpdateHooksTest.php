@@ -41,22 +41,26 @@ class PluginUpdateHooksTest extends TestCase {
 	}
 
 	/**
-	 * Test update check when cached as "no update".
+	 * Test update check when already present in the transient (native caching).
 	 */
 	public function testCheckUpdateCachedNoUpdate(): void {
-		$pluginBasename                        = 'my-plugin/my-plugin.php';
-		$cacheKey                              = 'jcore_update_' . md5( 'my-plugin|1.0.0|none' );
-		$GLOBALS['wp_transients'][ $cacheKey ] = array( 'state' => 'no_update' );
+		$pluginBasename = 'my-plugin/my-plugin.php';
 
 		$hooks = new PluginUpdateHooks( $this->config );
 
 		$transient          = new stdClass();
 		$transient->checked = array( $pluginBasename => '1.0.0' );
 
+		// Simulate WordPress already having our "no_update" entry.
+		$entry                                   = new stdClass();
+		$entry->slug                             = 'my-plugin';
+		$entry->new_version                      = '1.0.0';
+		$transient->no_update[ $pluginBasename ] = $entry;
+
 		$result = $hooks->checkUpdate( $transient );
 
+		// Should return immediately without hitting the API.
 		$this->assertObjectHasProperty( 'no_update', $result );
-		$this->assertArrayHasKey( $pluginBasename, $result->no_update );
 		$this->assertSame( '1.0.0', $result->no_update[ $pluginBasename ]->new_version );
 	}
 

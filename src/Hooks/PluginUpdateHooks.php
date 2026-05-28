@@ -115,28 +115,17 @@ final class PluginUpdateHooks {
 			return $transient;
 		}
 
+		// If we already have a response (update) or a no_update entry, stay native and don't re-check.
+		if ( isset( $transient->response[ $pluginBasename ] ) || isset( $transient->no_update[ $pluginBasename ] ) ) {
+			return $transient;
+		}
+
 		$installedVersion = \is_string( $transient->checked[ $pluginBasename ] )
 			? $transient->checked[ $pluginBasename ]
 			: $this->config->version;
 
 		$licenseKey = $this->resolveLicenseKey();
-		$cacheKey   = $this->updateCacheKey( $installedVersion, $licenseKey );
-
-		$cached = $this->getSiteTransient( $cacheKey );
-
-		if ( \is_array( $cached ) && ( $cached['state'] ?? null ) === 'no_update' ) {
-			return $this->markNoUpdate( $transient, $pluginBasename, $installedVersion );
-		}
-
-		if ( \is_array( $cached ) && ( $cached['state'] ?? null ) === 'update' && \is_array( $cached['payload'] ?? null ) ) {
-			$payload = UpdatePayload::fromApiResponse( $cached['payload'] );
-			if ( $payload !== null ) {
-				$transient->response[ $pluginBasename ] = $this->toUpdateResponseObject( $payload, $pluginBasename );
-				return $transient;
-			}
-		}
-
-		$result = $this->client->checkForUpdate( $installedVersion, $licenseKey );
+		$result     = $this->client->checkForUpdate( $installedVersion, $licenseKey );
 
 		if ( ! $result->success ) {
 			$this->logger->debug(
@@ -150,19 +139,10 @@ final class PluginUpdateHooks {
 		}
 
 		if ( $result->noUpdate || $result->payload === null ) {
-			$this->setSiteTransient( $cacheKey, array( 'state' => 'no_update' ), $this->config->updateCacheTtl );
 			return $this->markNoUpdate( $transient, $pluginBasename, $installedVersion );
 		}
 
 		$transient->response[ $pluginBasename ] = $this->toUpdateResponseObject( $result->payload, $pluginBasename );
-		$this->setSiteTransient(
-			$cacheKey,
-			array(
-				'state'   => 'update',
-				'payload' => $result->payload->toArray(),
-			),
-			$this->config->updateCacheTtl
-		);
 
 		return $transient;
 	}
@@ -185,18 +165,7 @@ final class PluginUpdateHooks {
 			return $result;
 		}
 
-		$licenseKey = $this->resolveLicenseKey();
-		$cacheKey   = $this->updateCacheKey( $this->config->version, $licenseKey );
-		$cached     = $this->getSiteTransient( $cacheKey );
-
-		if ( \is_array( $cached ) && ( $cached['state'] ?? null ) === 'update' && \is_array( $cached['payload'] ?? null ) ) {
-			$payload = UpdatePayload::fromApiResponse( $cached['payload'] );
-			if ( $payload !== null ) {
-				$info = PluginInfoPayload::fromUpdatePayload( $this->config->slug, $payload );
-				return $this->toPluginInfoObject( $info );
-			}
-		}
-
+		$licenseKey   = $this->resolveLicenseKey();
 		$updateResult = $this->client->checkForUpdate( $this->config->version, $licenseKey );
 
 		if ( ! $updateResult->success || $updateResult->noUpdate || $updateResult->payload === null ) {
@@ -222,23 +191,7 @@ final class PluginUpdateHooks {
 			return LicenseValidationResult::failure( 'invalid_payload', 'License key must not be empty.' );
 		}
 
-		$cacheKey = $this->licenseValidationCacheKey( $trimmed );
-
-		if ( ! $forceRefresh ) {
-			$cached = $this->getSiteTransient( $cacheKey );
-
-			if ( \is_array( $cached ) && \array_key_exists( 'valid', $cached ) && \is_bool( $cached['valid'] ) ) {
-				return LicenseValidationResult::success( $cached['valid'], true );
-			}
-		}
-
-		$result = $this->client->validateLicense( $trimmed );
-
-		if ( $result->success ) {
-			$this->setSiteTransient( $cacheKey, array( 'valid' => $result->valid ), $this->config->licenseValidationCacheTtl );
-		}
-
-		return $result;
+		return $this->client->validateLicense( $trimmed );
 	}
 
 	/**
@@ -251,22 +204,6 @@ final class PluginUpdateHooks {
 	 */
 	public function isLicenseValid( string $licenseKey, bool $forceRefresh = false ): bool {
 		return $this->validateLicense( $licenseKey, $forceRefresh )->valid;
-	}
-
-	/**
-	 * Resolves the license key to use.
-	 *
-	 * @return string|null
-	 */
-	private function resolveLicenseKey(): ?string {
-		if ( $this->config->licenseProvider !== null ) {
-			$provided = $this->config->licenseProvider->getLicenseKey();
-			if ( \is_string( $provided ) && $provided !== '' ) {
-				return $provided;
-			}
-		}
-
-		return $this->config->licenseKey;
 	}
 
 	/**
@@ -283,59 +220,19 @@ final class PluginUpdateHooks {
 	}
 
 	/**
-	 * Gets the update cache key.
+	 * Resolves the license key to use.
 	 *
-	 * @param string      $installedVersion The installed version.
-	 * @param string|null $licenseKey       The license key.
-	 *
-	 * @return string
+	 * @return string|null
 	 */
-	private function updateCacheKey( string $installedVersion, ?string $licenseKey ): string {
-		$licenseHash = $licenseKey === null || $licenseKey === '' ? 'none' : \hash( 'sha256', $licenseKey );
-		return 'jcore_update_' . \md5( $this->config->slug . '|' . $installedVersion . '|' . $licenseHash );
-	}
-
-	/**
-	 * Gets the license validation cache key.
-	 *
-	 * @param string $licenseKey The license key.
-	 *
-	 * @return string
-	 */
-	private function licenseValidationCacheKey( string $licenseKey ): string {
-		return 'jcore_license_' . \md5( $this->config->slug . '|' . \hash( 'sha256', $licenseKey ) );
-	}
-
-	/**
-	 * Wrapper for `get_site_transient`.
-	 *
-	 * @param string $key The transient key.
-	 *
-	 * @return mixed
-	 */
-	private function getSiteTransient( string $key ): mixed {
-		if ( ! \function_exists( 'get_site_transient' ) ) {
-			return null;
+	private function resolveLicenseKey(): ?string {
+		if ( $this->config->licenseProvider !== null ) {
+			$provided = $this->config->licenseProvider->getLicenseKey();
+			if ( \is_string( $provided ) && $provided !== '' ) {
+				return $provided;
+			}
 		}
 
-		return \get_site_transient( $key );
-	}
-
-	/**
-	 * Wrapper for `set_site_transient`.
-	 *
-	 * @param string $key   The transient key.
-	 * @param mixed  $value The value to set.
-	 * @param int    $ttl   The time to live in seconds.
-	 *
-	 * @return void
-	 */
-	private function setSiteTransient( string $key, mixed $value, int $ttl ): void {
-		if ( ! \function_exists( 'set_site_transient' ) ) {
-			return;
-		}
-
-		\set_site_transient( $key, $value, $ttl );
+		return $this->config->licenseKey;
 	}
 
 	/**
