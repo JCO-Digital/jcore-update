@@ -1,5 +1,20 @@
 # Changelog
 
+## v1.1.0 (2026-05-28)
+
+#### Features
+
+- support: add PluginHelper to retrieve version from plugin header (8b70a90)
+
+#### Continuous Integration
+
+- github: add optional build step to reusable publish workflow (3f89699)
+- github: automate build and zip steps in publish workflow (426717d)
+
+#### Maintenance
+
+- config: add foonver configuration file (6419c3c)
+
 ### v1.0.1 (2026-05-28)
 
 #### Refactor
