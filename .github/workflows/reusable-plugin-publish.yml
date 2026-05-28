@@ -1,0 +1,95 @@
+name: Publish Plugin to Update API
+
+on:
+  workflow_call:
+    inputs:
+      slug:
+        required: true
+        type: string
+        description: "The plugin slug (e.g., jcore-turva)"
+      version:
+        required: true
+        type: string
+        description: "The version being released"
+      release_notes:
+        required: true
+        type: string
+        description: "Changelog/Release notes"
+      plugin_file:
+        required: true
+        type: string
+        description: "The main plugin PHP file to extract metadata from (e.g. jcore-turva.php)"
+      artifact_path:
+        required: true
+        type: string
+        description: "Path to the built zip file (e.g., release/jcore-turva.zip)"
+    secrets:
+      UPDATE_API_KEY:
+        required: true
+        description: "The API key for https://update.jcore.fi"
+
+jobs:
+  publish:
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Extract metadata
+        id: metadata
+        run: |
+          if [ ! -f "${{ inputs.plugin_file }}" ]; then
+            echo "::error::Plugin file ${{ inputs.plugin_file }} not found!"
+            exit 1
+          fi
+
+          # Function to extract header and fail if empty (for mandatory fields)
+          extract_mandatory() {
+            local val=$(grep -i "$1" "${{ inputs.plugin_file }}" | cut -d: -f2 | xargs)
+            if [ -z "$val" ]; then
+              echo "::error::Mandatory metadata '$1' not found in ${{ inputs.plugin_file }}"
+              exit 1
+            fi
+            echo "$val"
+          }
+
+          # Function to extract header (for optional fields)
+          extract_optional() {
+            grep -i "$1" "${{ inputs.plugin_file }}" | cut -d: -f2 | xargs || echo ""
+          }
+
+          echo "requires_wp=$(extract_mandatory "Requires at least:")" >> $GITHUB_OUTPUT
+          echo "tested_wp=$(extract_mandatory "Tested up to:")" >> $GITHUB_OUTPUT
+          echo "requires_php=$(extract_optional "Requires PHP:")" >> $GITHUB_OUTPUT
+
+      - name: Create GitHub Release
+        uses: softprops/action-gh-release@v2
+        with:
+          tag_name: v${{ inputs.version }}
+          name: Release ${{ inputs.version }}
+          body: ${{ inputs.release_notes }}
+          draft: false
+          prerelease: false
+          files: ${{ inputs.artifact_path }}
+
+      - name: Publish to Update API
+        env:
+          UPDATE_API_KEY: ${{ secrets.UPDATE_API_KEY }}
+          ARTIFACT_PATH: ${{ inputs.artifact_path }}
+        run: |
+          FILENAME=$(basename $ARTIFACT_PATH)
+          curl -i -X POST https://update.jcore.fi/v1/versions \
+            -H "Content-Type: application/json" \
+            -H "X-API-Key: $UPDATE_API_KEY" \
+            -d '{
+              "slug": "${{ inputs.slug }}",
+              "version": "${{ inputs.version }}",
+              "download_url": "https://github.com/${{ github.repository }}/releases/download/v${{ inputs.version }}/'$FILENAME'",
+              "changelog": ${{ toJson(inputs.release_notes) }},
+              "requires_wp": "${{ steps.metadata.outputs.requires_wp }}",
+              "tested_wp": "${{ steps.metadata.outputs.tested_wp }}",
+              "requires_php": "${{ steps.metadata.outputs.requires_php }}"
+            }'
