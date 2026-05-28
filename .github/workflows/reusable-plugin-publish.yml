@@ -15,6 +15,11 @@ on:
       plugin_file:
         required: true
         type: string
+      build:
+        description: "Whether to run the build step (make ci). Set to false if assets are already committed."
+        required: false
+        type: boolean
+        default: true
     secrets:
       UPDATE_API_KEY:
         required: true
@@ -32,19 +37,31 @@ jobs:
 
       # 2. Setup Environments
       - uses: actions/setup-node@v4
+        if: ${{ inputs.build }}
         with:
           node-version: 24
       - uses: pnpm/action-setup@v4
+        if: ${{ inputs.build }}
       - uses: shivammathur/setup-php@v2
+        if: ${{ inputs.build }}
         with:
           php-version: "8.2"
           tools: composer
 
-      # 3. Build Assets and Zip (using your existing Makefile targets)
+      # 3. Build Assets and Zip
       - name: Build
+        if: ${{ inputs.build }}
         run: make ci
       - name: Zip
-        run: make release
+        run: |
+          mkdir -p release
+          if [ -f .zipexclude ]; then
+            zip -r release/${{ inputs.slug }}.zip . -x@.zipexclude
+          elif [ -f zip_exclude.txt ]; then
+            zip -r release/${{ inputs.slug }}.zip . -x@zip_exclude.txt
+          else
+            zip -r release/${{ inputs.slug }}.zip . -x "release/*" ".git/*" ".github/*"
+          fi
 
       # 4. Extract metadata from the PHP file
       - name: Extract metadata
