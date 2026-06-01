@@ -20,9 +20,15 @@ on:
         required: false
         type: boolean
         default: true
+      dist_repo:
+        description: "Optional: SSH URL of a distribution repository to push built files to (e.g. git@github.com:org/repo-dist.git)"
+        required: false
+        type: string
     secrets:
       UPDATE_API_KEY:
         required: true
+      DIST_REPO_SSH_KEY:
+        required: false
 
 jobs:
   publish:
@@ -97,3 +103,52 @@ jobs:
               "tested_wp": "${{ steps.metadata.outputs.tested_wp }}",
               "requires_php": "${{ steps.metadata.outputs.requires_php }}"
             }'
+
+      # 7. Publish to Dist Repo (Optional)
+      - name: Publish to Dist Repo
+        if: ${{ inputs.dist_repo && secrets.DIST_REPO_SSH_KEY }}
+        env:
+          DIST_REPO: ${{ inputs.dist_repo }}
+          SSH_AUTH_SOCK: /tmp/ssh_agent.sock
+        run: |
+          # Setup SSH
+          ssh-agent -a $SSH_AUTH_SOCK > /dev/null
+          ssh-add - <<< "${{ secrets.DIST_REPO_SSH_KEY }}"
+          mkdir -p ~/.ssh
+          # Extract hostname for keyscan
+          HOSTNAME=$(echo $DIST_REPO | sed -E 's/.*@([^:/]+).*/\1/')
+          ssh-keyscan -H "$HOSTNAME" >> ~/.ssh/known_hosts
+
+          # Clone dist repo
+          git clone "$DIST_REPO" dist_repo_clone
+
+          # Sync files
+          # We use rsync to copy everything except .git and other internal folders
+          # This ensures the dist repo is a clean mirror of the built project
+          rsync -av --delete ./ dist_repo_clone/ \
+            --exclude '.git/' \
+            --exclude '.github/' \
+            --exclude 'dist_repo_clone/' \
+            --exclude 'release/'
+
+          cd dist_repo_clone
+
+          # Handle dist-specific gitignore
+          # If .distignore exists, it becomes the .gitignore for the dist repo
+          if [ -f .distignore ]; then
+            mv .distignore .gitignore
+          fi
+
+          # Commit, Tag and Push
+          git config user.name "github-actions[bot]"
+          git config user.email "github-actions[bot]@users.noreply.github.com"
+          git add .
+
+          if git diff --quiet && git diff --staged --quiet; then
+            echo "No changes to commit"
+          else
+            git commit -m "Release v${{ inputs.version }}"
+            git tag -a "v${{ inputs.version }}" -m "Release v${{ inputs.version }}"
+            git push origin main
+            git push origin "v${{ inputs.version }}"
+          fi
