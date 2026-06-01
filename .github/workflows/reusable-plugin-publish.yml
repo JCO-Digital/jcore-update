@@ -108,15 +108,21 @@ jobs:
 
       # 7. Publish to Dist Repo (Optional)
       - name: Publish to Dist Repo
-        if: ${{ inputs.dist_repo != '' && secrets.DIST_REPO_SSH_KEY != '' }}
+        if: ${{ inputs.dist_repo != '' }}
         shell: bash
         env:
           DIST_REPO: ${{ inputs.dist_repo }}
+          DIST_REPO_SSH_KEY: ${{ secrets.DIST_REPO_SSH_KEY }}
           SSH_AUTH_SOCK: /tmp/ssh_agent.sock
         run: |
+          if [ -z "$DIST_REPO_SSH_KEY" ]; then
+            echo "DIST_REPO_SSH_KEY is not set, skipping dist publish."
+            exit 0
+          fi
+
           # Setup SSH
           ssh-agent -a $SSH_AUTH_SOCK > /dev/null
-          ssh-add - <<< "${{ secrets.DIST_REPO_SSH_KEY }}"
+          ssh-add - <<< "$DIST_REPO_SSH_KEY"
           mkdir -p ~/.ssh
           # Extract hostname for keyscan
           HOSTNAME=$(echo $DIST_REPO | sed -E 's/.*@([^:/]+).*/\1/; s/([^:/]+):.*/\1/')
