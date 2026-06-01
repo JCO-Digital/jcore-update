@@ -106,7 +106,8 @@ jobs:
 
       # 7. Publish to Dist Repo (Optional)
       - name: Publish to Dist Repo
-        if: ${{ inputs.dist_repo && secrets.DIST_REPO_SSH_KEY }}
+        if: ${{ inputs.dist_repo != '' && secrets.DIST_REPO_SSH_KEY != '' }}
+        shell: bash
         env:
           DIST_REPO: ${{ inputs.dist_repo }}
           SSH_AUTH_SOCK: /tmp/ssh_agent.sock
@@ -116,7 +117,7 @@ jobs:
           ssh-add - <<< "${{ secrets.DIST_REPO_SSH_KEY }}"
           mkdir -p ~/.ssh
           # Extract hostname for keyscan
-          HOSTNAME=$(echo $DIST_REPO | sed -E 's/.*@([^:/]+).*/\1/')
+          HOSTNAME=$(echo $DIST_REPO | sed -E 's/.*@([^:/]+).*/\1/; s/([^:/]+):.*/\1/')
           ssh-keyscan -H "$HOSTNAME" >> ~/.ssh/known_hosts
 
           # Clone dist repo
