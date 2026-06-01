@@ -48,6 +48,8 @@ jobs:
           node-version: 24
       - uses: pnpm/action-setup@v4
         if: ${{ inputs.build }}
+        with:
+          version: "11"
       - uses: shivammathur/setup-php@v2
         if: ${{ inputs.build }}
         with:
