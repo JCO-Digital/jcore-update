@@ -132,13 +132,14 @@ jobs:
           git clone "$DIST_REPO" dist_repo_clone
 
           # Sync files
-          # We use rsync to copy everything except .git and other internal folders
-          # This ensures the dist repo is a clean mirror of the built project
-          rsync -av --delete ./ dist_repo_clone/ \
-            --exclude '.git/' \
-            --exclude '.github/' \
-            --exclude 'dist_repo_clone/' \
-            --exclude 'release/'
+          # 1. Start with hardcoded safety excludes
+          # 2. Add .distignore if it exists to control project-specific excludes
+          EXCLUDES=("--exclude=.git/" "--exclude=.github/" "--exclude=dist_repo_clone/" "--exclude=release/")
+          if [ -f .distignore ]; then
+            EXCLUDES+=("--exclude-from=.distignore")
+          fi
+
+          rsync -av --delete "${EXCLUDES[@]}" ./ dist_repo_clone/
 
           cd dist_repo_clone
 
