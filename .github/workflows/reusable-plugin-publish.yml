@@ -20,6 +20,10 @@ on:
         required: false
         type: boolean
         default: true
+      pnpm_version:
+        description: "Optional: Version of pnpm to use. If not set, uses packageManager in package.json."
+        required: false
+        type: string
       dist_repo:
         description: "Optional: SSH URL of a distribution repository to push built files to (e.g. git@github.com:org/repo-dist.git)"
         required: false
@@ -49,7 +53,7 @@ jobs:
       - uses: pnpm/action-setup@v4
         if: ${{ inputs.build }}
         with:
-          version: "11"
+          version: ${{ inputs.pnpm_version || '' }}
       - uses: shivammathur/setup-php@v2
         if: ${{ inputs.build }}
         with:
