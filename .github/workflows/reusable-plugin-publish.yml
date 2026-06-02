@@ -156,6 +156,15 @@ jobs:
           # Commit, Tag and Push
           git config user.name "github-actions[bot]"
           git config user.email "github-actions[bot]@users.noreply.github.com"
+
+          # Detect or set branch name
+          CURRENT_BRANCH=$(git branch --show-current)
+          if [ -z "$CURRENT_BRANCH" ]; then
+            # If we're in an empty repo, it might not have a branch yet
+            git checkout -b main || git checkout main
+            CURRENT_BRANCH="main"
+          fi
+
           git add .
 
           if git diff --quiet && git diff --staged --quiet; then
@@ -163,6 +172,6 @@ jobs:
           else
             git commit -m "Release v${{ inputs.version }}"
             git tag -a "v${{ inputs.version }}" -m "Release v${{ inputs.version }}"
-            git push origin main
+            git push origin "$CURRENT_BRANCH"
             git push origin "v${{ inputs.version }}"
           fi
