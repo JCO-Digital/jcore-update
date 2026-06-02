@@ -134,7 +134,7 @@ jobs:
           # Sync files
           # 1. Start with hardcoded safety excludes
           # 2. Add .distignore if it exists to control project-specific excludes
-          EXCLUDES=("--exclude=.git/" "--exclude=.github/" "--exclude=dist_repo_clone/" "--exclude=release/")
+          EXCLUDES=("--exclude=.git/" "--exclude=.github/" "--exclude=node_modules/" "--exclude=dist_repo_clone/" "--exclude=release/")
           if [ -f .distignore ]; then
             EXCLUDES+=("--exclude-from=.distignore")
           fi
