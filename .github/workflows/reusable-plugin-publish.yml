@@ -58,7 +58,7 @@ jobs:
         if: ${{ inputs.build }}
         with:
           php-version: "8.2"
-          tools: composer
+          tools: composer, wp-cli
 
       # 3. Build Assets and Zip
       - name: Build
