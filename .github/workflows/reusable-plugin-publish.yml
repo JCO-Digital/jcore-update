@@ -28,10 +28,16 @@ on:
         description: "Optional: SSH URL of a distribution repository to push built files to (e.g. git@github.com:org/repo-dist.git)"
         required: false
         type: string
+      slack_channel:
+        description: "Optional: Slack channel to notify (e.g. #announcements)"
+        required: false
+        type: string
     secrets:
       UPDATE_API_KEY:
         required: true
       DIST_REPO_SSH_KEY:
+        required: false
+      SLACK_TOKEN:
         required: false
 
 jobs:
@@ -178,3 +184,18 @@ jobs:
             git push origin "$CURRENT_BRANCH"
             git push origin "v${{ inputs.version }}"
           fi
+
+      # 8. Notify Slack (Optional)
+      - name: Notify Slack
+        if: ${{ inputs.slack_channel != '' && secrets.SLACK_TOKEN != '' }}
+        uses: slackapi/slack-github-action@v1.27.0
+        with:
+          channel-id: ${{ inputs.slack_channel }}
+          slack-message: |
+            🚀 *${{ inputs.slug }}* version *${{ inputs.version }}* has been successfully published!
+            <https://github.com/${{ github.repository }}/releases/tag/v${{ inputs.version }}|View Release>
+
+            *Release Notes:*
+            ${{ inputs.release_notes }}
+        env:
+          SLACK_BOT_TOKEN: ${{ secrets.SLACK_TOKEN }}
