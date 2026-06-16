@@ -157,11 +157,14 @@ jobs:
           git config user.name "github-actions[bot]"
           git config user.email "github-actions[bot]@users.noreply.github.com"
 
-          # Detect or set branch name
-          CURRENT_BRANCH=$(git branch --show-current)
-          if [ -z "$CURRENT_BRANCH" ]; then
-            # If we're in an empty repo, it might not have a branch yet
-            git checkout -b main || git checkout main
+          # Ensure we use the 'main' branch
+          if git checkout main 2>/dev/null; then
+            CURRENT_BRANCH="main"
+          elif [ "$(git branch --show-current)" = "master" ]; then
+            git branch -m master main
+            CURRENT_BRANCH="main"
+          else
+            git checkout -b main
             CURRENT_BRANCH="main"
           fi
 
