@@ -56,6 +56,30 @@ Convenience helper:
 $isValid = $updater->isLicenseValid($licenseKey);
 ```
 
+## Semantic Versioning & Major Update Protection
+
+By default, `jcore-update` protects against unintended breaking changes by filtering out major version updates from WordPress's automatic update manifest:
+
+- If you are on `1.2.0`, minor and patch releases (`1.x`) update as normal.
+- Major releases (`2.x`) will not show up in the manifest automatically.
+- When a major version is available, an inline notice with an override button (**"Allow upgrade to v2.x"**) appears on the Plugins page.
+- Clicking this button performs a one-time bump allowing updates for that target major version (e.g., `2.x`), while continuing to block subsequent major versions (e.g., `3.x`).
+- Once updated to `2.x`, future `2.x` updates proceed as normal.
+
+### Disabling Major Version Filtering
+
+If you want all updates (including major versions) to be offered directly without requiring user confirmation:
+
+```php
+$config = new UpdateConfig(
+    pluginFile: __FILE__,
+    slug: 'my-plugin-slug',
+    version: PluginHelper::getVersion(__FILE__),
+    apiBaseUrl: 'https://api.example.com/v1',
+    filterMajorUpdates: false,
+);
+```
+
 ## Notes
 
 - `GET /v1/update-check` is used for update checks and plugin detail payloads.

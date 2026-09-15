@@ -32,6 +32,7 @@ final class UpdateConfig {
 	 * @param int                           $requestTimeout            API request timeout in seconds.
 	 * @param int                           $updateCacheTtl            Update check cache TTL in seconds.
 	 * @param int                           $licenseValidationCacheTtl License validation cache TTL in seconds.
+	 * @param bool                          $filterMajorUpdates        Whether to filter major version updates by default.
 	 * @param Closure|null                  $httpArgsFilter            Optional closure to filter HTTP args.
 	 * @param LoggerInterface|null          $logger                    Optional logger.
 	 *
@@ -47,6 +48,7 @@ final class UpdateConfig {
 		public readonly int $requestTimeout = 10,
 		public readonly int $updateCacheTtl = 43200,
 		public readonly int $licenseValidationCacheTtl = 600,
+		public readonly bool $filterMajorUpdates = true,
 		public readonly ?Closure $httpArgsFilter = null,
 		public readonly ?LoggerInterface $logger = null,
 	) {

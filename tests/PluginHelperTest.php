@@ -7,6 +7,9 @@
 
 declare(strict_types=1);
 
+// phpcs:disable WordPress.WP.AlternativeFunctions.unlink_unlink
+// phpcs:disable WordPress.WP.AlternativeFunctions.file_system_operations_file_put_contents
+
 namespace Jcore\Update\Tests;
 
 use Jcore\Update\Support\PluginHelper;

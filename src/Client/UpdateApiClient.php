@@ -13,6 +13,7 @@ use Jcore\Update\Config\UpdateConfig;
 use Jcore\Update\Licensing\LicenseValidationResult;
 use Jcore\Update\Support\LoggerInterface;
 use Jcore\Update\Support\NullLogger;
+use Jcore\Update\Support\SemVer;
 use Jcore\Update\ValueObject\UpdatePayload;
 
 /**
@@ -47,15 +48,16 @@ final class UpdateApiClient {
 	 *
 	 * @param string      $installedVersion The currently installed version.
 	 * @param string|null $licenseKey       Optional license key.
+	 * @param string|null $channel          Optional release channel ('patch', 'minor', 'major', 'all').
 	 *
 	 * @return UpdateCheckResult
 	 */
-	public function checkForUpdate( string $installedVersion, ?string $licenseKey = null ): UpdateCheckResult {
+	public function checkForUpdate( string $installedVersion, ?string $licenseKey = null, ?string $channel = null ): UpdateCheckResult {
 		if ( ! $this->hasWordPressHttpApi() ) {
 			return UpdateCheckResult::failure( 'transport_error', 'WordPress HTTP API is unavailable.' );
 		}
 
-		$url = $this->buildUpdateCheckUrl( $installedVersion, $licenseKey );
+		$url = $this->buildUpdateCheckUrl( $installedVersion, $licenseKey, $channel );
 
 		$args = array(
 			'timeout' => $this->config->requestTimeout,
@@ -101,13 +103,45 @@ final class UpdateApiClient {
 			return UpdateCheckResult::failure( 'invalid_json', 'Unable to decode update-check response JSON.' );
 		}
 
-		$payload = UpdatePayload::fromApiResponse( $data );
+		// Single update payload response.
+		if ( isset( $data['new_version'] ) && \is_string( $data['new_version'] ) ) {
+			$payload = UpdatePayload::fromApiResponse( $data );
 
-		if ( $payload === null ) {
-			return UpdateCheckResult::failure( 'invalid_payload', 'Update response missing required fields.' );
+			if ( $payload === null ) {
+				return UpdateCheckResult::failure( 'invalid_payload', 'Update response missing required fields.' );
+			}
+
+			$majorPayload = SemVer::isMajorBump( $installedVersion, $payload->newVersion ) ? $payload : null;
+
+			return UpdateCheckResult::update( $payload, $majorPayload );
 		}
 
-		return UpdateCheckResult::update( $payload );
+		// Grouped payload response (e.g. from channel=all).
+		$patch = isset( $data['patch'] ) && \is_array( $data['patch'] ) ? UpdatePayload::fromApiResponse( $data['patch'] ) : null;
+		$minor = isset( $data['minor'] ) && \is_array( $data['minor'] ) ? UpdatePayload::fromApiResponse( $data['minor'] ) : null;
+		$major = isset( $data['major'] ) && \is_array( $data['major'] ) ? UpdatePayload::fromApiResponse( $data['major'] ) : null;
+
+		$versions = isset( $data['versions'] ) && \is_array( $data['versions'] )
+			? \array_values( \array_filter( $data['versions'], 'is_string' ) )
+			: array();
+
+		$channels = array(
+			'patch' => $patch,
+			'minor' => $minor,
+			'major' => $major,
+		);
+
+		$primaryPayload = $minor ?? $patch;
+
+		if ( $primaryPayload === null && $major === null ) {
+			return UpdateCheckResult::noUpdate( null, $channels, $versions );
+		}
+
+		if ( $primaryPayload === null ) {
+			return UpdateCheckResult::noUpdate( $major, $channels, $versions );
+		}
+
+		return UpdateCheckResult::update( $primaryPayload, $major, $channels, $versions );
 	}
 
 	/**
@@ -193,10 +227,11 @@ final class UpdateApiClient {
 	 *
 	 * @param string      $installedVersion The installed version.
 	 * @param string|null $licenseKey       The license key.
+	 * @param string|null $channel          Optional release channel.
 	 *
 	 * @return string
 	 */
-	private function buildUpdateCheckUrl( string $installedVersion, ?string $licenseKey ): string {
+	private function buildUpdateCheckUrl( string $installedVersion, ?string $licenseKey, ?string $channel = null ): string {
 		$baseUrl = $this->config->normalizedApiBaseUrl() . '/update-check';
 
 		$query = array(
@@ -206,6 +241,10 @@ final class UpdateApiClient {
 
 		if ( $licenseKey !== null && $licenseKey !== '' ) {
 			$query['license_key'] = $licenseKey;
+		}
+
+		if ( $channel !== null && $channel !== '' ) {
+			$query['channel'] = $channel;
 		}
 
 		if ( \function_exists( 'add_query_arg' ) ) {

@@ -40,7 +40,7 @@ class UpdateApiClientTest extends TestCase {
 	}
 
 	/**
-	 * Test successful update check.
+	 * Test successful update check for minor update.
 	 */
 	public function testCheckForUpdateSuccess(): void {
 		$GLOBALS['wp_remote_get_response'] = array(
@@ -58,7 +58,97 @@ class UpdateApiClientTest extends TestCase {
 
 		$this->assertTrue( $result->success );
 		$this->assertFalse( $result->noUpdate );
+		$this->assertNotNull( $result->payload );
 		$this->assertSame( '1.1.0', $result->payload->newVersion );
+		$this->assertNull( $result->majorPayload );
+	}
+
+	/**
+	 * Test single update response with major version bump.
+	 */
+	public function testCheckForUpdateSingleMajorBump(): void {
+		$GLOBALS['wp_remote_get_response'] = array(
+			'response' => array( 'code' => 200 ),
+			'body'     => \wp_json_encode(
+				array(
+					'new_version' => '2.0.3',
+					'package'     => 'https://example.com/2.0.3.zip',
+				)
+			),
+		);
+
+		$client = new UpdateApiClient( $this->config );
+		$result = $client->checkForUpdate( '1.2.0' );
+
+		$this->assertTrue( $result->success );
+		$this->assertFalse( $result->noUpdate );
+		$this->assertNotNull( $result->payload );
+		$this->assertSame( '2.0.3', $result->payload->newVersion );
+		$this->assertNotNull( $result->majorPayload );
+		$this->assertSame( '2.0.3', $result->majorPayload->newVersion );
+	}
+
+	/**
+	 * Test grouped channel payload with both minor and major updates.
+	 */
+	public function testCheckForUpdateGroupedPayload(): void {
+		$GLOBALS['wp_remote_get_response'] = array(
+			'response' => array( 'code' => 200 ),
+			'body'     => \wp_json_encode(
+				array(
+					'patch'    => null,
+					'minor'    => array(
+						'new_version' => '1.3.0',
+						'package'     => 'https://example.com/1.3.0.zip',
+					),
+					'major'    => array(
+						'new_version' => '2.0.3',
+						'package'     => 'https://example.com/2.0.3.zip',
+					),
+					'versions' => array( '1.2.1', '1.3.0', '2.0.0', '2.0.3' ),
+				)
+			),
+		);
+
+		$client = new UpdateApiClient( $this->config );
+		$result = $client->checkForUpdate( '1.2.0', null, 'all' );
+
+		$this->assertTrue( $result->success );
+		$this->assertFalse( $result->noUpdate );
+		$this->assertNotNull( $result->payload );
+		$this->assertSame( '1.3.0', $result->payload->newVersion );
+		$this->assertNotNull( $result->majorPayload );
+		$this->assertSame( '2.0.3', $result->majorPayload->newVersion );
+		$this->assertCount( 4, $result->versions );
+	}
+
+	/**
+	 * Test grouped channel payload with only major update available.
+	 */
+	public function testCheckForUpdateGroupedMajorOnly(): void {
+		$GLOBALS['wp_remote_get_response'] = array(
+			'response' => array( 'code' => 200 ),
+			'body'     => \wp_json_encode(
+				array(
+					'patch'    => null,
+					'minor'    => null,
+					'major'    => array(
+						'new_version' => '2.0.3',
+						'package'     => 'https://example.com/2.0.3.zip',
+					),
+					'versions' => array( '2.0.0', '2.0.3' ),
+				)
+			),
+		);
+
+		$client = new UpdateApiClient( $this->config );
+		$result = $client->checkForUpdate( '1.2.0', null, 'all' );
+
+		$this->assertTrue( $result->success );
+		$this->assertTrue( $result->noUpdate );
+		$this->assertNull( $result->payload );
+		$this->assertNotNull( $result->majorPayload );
+		$this->assertSame( '2.0.3', $result->majorPayload->newVersion );
 	}
 
 	/**
@@ -76,6 +166,7 @@ class UpdateApiClientTest extends TestCase {
 		$this->assertTrue( $result->success );
 		$this->assertTrue( $result->noUpdate );
 		$this->assertNull( $result->payload );
+		$this->assertNull( $result->majorPayload );
 	}
 
 	/**

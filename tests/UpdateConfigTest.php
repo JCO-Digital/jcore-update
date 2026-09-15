@@ -33,6 +33,22 @@ class UpdateConfigTest extends TestCase {
 		$this->assertSame( 'my-plugin', $config->slug );
 		$this->assertSame( '1.0.0', $config->version );
 		$this->assertSame( 'https://api.example.com', $config->normalizedApiBaseUrl() );
+		$this->assertTrue( $config->filterMajorUpdates );
+	}
+
+	/**
+	 * Test custom filterMajorUpdates configuration.
+	 */
+	public function testCustomFilterMajorUpdates(): void {
+		$config = new UpdateConfig(
+			pluginFile: '/path/to/plugin.php',
+			slug: 'my-plugin',
+			version: '1.0.0',
+			apiBaseUrl: 'https://api.example.com/',
+			filterMajorUpdates: false
+		);
+
+		$this->assertFalse( $config->filterMajorUpdates );
 	}
 
 	/**

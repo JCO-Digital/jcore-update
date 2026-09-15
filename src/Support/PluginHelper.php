@@ -27,6 +27,7 @@ final class PluginHelper {
 		}
 
 		if ( ! \function_exists( 'get_file_data' ) ) {
+			// phpcs:ignore WordPress.WP.AlternativeFunctions.file_get_contents_file_get_contents
 			$content = \file_get_contents( $pluginFile );
 			if ( $content === false ) {
 				return '';
