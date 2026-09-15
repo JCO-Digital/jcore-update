@@ -1,5 +1,15 @@
 # Changelog
 
+## v1.4.0 (2026-09-15)
+
+#### Features
+
+- ci: scope namespace to prevent cross-plugin class collisions (3551162)
+
+#### Build System
+
+- composer: update dependencies (1b14d88)
+
 ### v1.3.2 (2026-09-15)
 
 #### Maintenance
