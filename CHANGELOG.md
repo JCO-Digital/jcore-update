@@ -1,5 +1,18 @@
 # Changelog
 
+## v1.3.0 (2026-09-15)
+
+#### Features
+
+- update: add major version update protection and semver helper (481d56b)
+
+#### Continuous Integration
+
+- github: evaluate slack token availability via environment variable (d46061a)
+- github: add optional slack notification step to plugin publish workflow (ac85f9d)
+- github: ensure main branch usage during publication (4222a62)
+- github: add wp-cli to setup-php workflow action (2d8d39b)
+
 ## v1.2.0 (2026-06-05)
 
 #### Features
