@@ -16,6 +16,17 @@ require_once __DIR__ . '/../vendor/autoload.php';
  * Mock WordPress functions if not defined.
  */
 
+if ( ! function_exists( 'is_admin' ) ) {
+	/**
+	 * Mock is_admin.
+	 *
+	 * @return bool
+	 */
+	function is_admin() {
+		return $GLOBALS['wp_is_admin'] ?? true;
+	}
+}
+
 if ( ! function_exists( 'wp_remote_get' ) ) {
 	/**
 	 * Mock wp_remote_get.

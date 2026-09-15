@@ -48,6 +48,13 @@ final class PluginUpdateHooks {
 	private UpdateApiClient $client;
 
 	/**
+	 * Whether the major update row has already been rendered on this request.
+	 *
+	 * @var bool
+	 */
+	private bool $majorRowRendered = false;
+
+	/**
 	 * PluginUpdateHooks constructor.
 	 *
 	 * @param UpdateConfig         $config The configuration.
@@ -79,6 +86,7 @@ final class PluginUpdateHooks {
 		if ( \function_exists( 'add_action' ) ) {
 			$basename = $this->pluginBasename();
 			\add_action( 'after_plugin_row_' . $basename, array( $this, 'renderAfterPluginRow' ), 10, 2 );
+			\add_action( 'after_plugin_row', array( $this, 'renderAfterPluginRow' ), 10, 2 );
 			\add_action( 'in_plugin_update_message-' . $basename, array( $this, 'renderInPluginUpdateMessage' ), 10, 2 );
 			\add_action( 'admin_post_jcore_allow_major_update', array( $this, 'handleAllowMajorUpdate' ) );
 			\add_action( 'admin_notices', array( $this, 'renderAdminNotice' ) );
@@ -103,6 +111,7 @@ final class PluginUpdateHooks {
 		if ( \function_exists( 'remove_action' ) ) {
 			$basename = $this->pluginBasename();
 			\remove_action( 'after_plugin_row_' . $basename, array( $this, 'renderAfterPluginRow' ), 10 );
+			\remove_action( 'after_plugin_row', array( $this, 'renderAfterPluginRow' ), 10 );
 			\remove_action( 'in_plugin_update_message-' . $basename, array( $this, 'renderInPluginUpdateMessage' ), 10 );
 			\remove_action( 'admin_post_jcore_allow_major_update', array( $this, 'handleAllowMajorUpdate' ) );
 			\remove_action( 'admin_notices', array( $this, 'renderAdminNotice' ) );
@@ -129,11 +138,6 @@ final class PluginUpdateHooks {
 
 		$pluginBasename = $this->pluginBasename();
 		if ( ! \array_key_exists( $pluginBasename, $transient->checked ) ) {
-			return $transient;
-		}
-
-		// If we already have a response (update) or a no_update entry, stay native and don't re-check.
-		if ( isset( $transient->response[ $pluginBasename ] ) || isset( $transient->no_update[ $pluginBasename ] ) ) {
 			return $transient;
 		}
 
@@ -370,6 +374,26 @@ final class PluginUpdateHooks {
 			}
 		}
 
+		// Fallback: If transient is not set, check on-demand when in admin.
+		if ( $this->config->filterMajorUpdates && \function_exists( 'is_admin' ) && \is_admin() ) {
+			$licenseKey   = $this->resolveLicenseKey();
+			$updateResult = $this->client->checkForUpdate( $this->config->version, $licenseKey, 'all' );
+
+			if ( $updateResult->success ) {
+				$candidate = $updateResult->majorPayload;
+				if ( $candidate === null && $updateResult->payload !== null ) {
+					if ( SemVer::getMajor( $updateResult->payload->newVersion ) > SemVer::getMajor( $this->config->version ) ) {
+						$candidate = $updateResult->payload;
+					}
+				}
+
+				if ( $candidate !== null && SemVer::getMajor( $candidate->newVersion ) > $this->getAllowedMajorVersion() ) {
+					$this->setAvailableMajorUpdate( $candidate );
+					return $candidate;
+				}
+			}
+		}
+
 		return null;
 	}
 
@@ -526,7 +550,17 @@ final class PluginUpdateHooks {
 	 * @return void
 	 */
 	public function renderAfterPluginRow( string $file, array $pluginData = array() ): void {
-		if ( ! $this->config->filterMajorUpdates ) {
+		if ( ! $this->config->filterMajorUpdates || $this->majorRowRendered ) {
+			return;
+		}
+
+		$pluginBasename = $this->pluginBasename();
+		$matches        = ( $file === $pluginBasename )
+			|| ( $file === \basename( $this->config->pluginFile ) )
+			|| \str_ends_with( $pluginBasename, '/' . $file )
+			|| \str_ends_with( $file, '/' . \basename( $this->config->pluginFile ) );
+
+		if ( ! $matches ) {
 			return;
 		}
 
@@ -541,12 +575,16 @@ final class PluginUpdateHooks {
 			return;
 		}
 
+		$this->majorRowRendered = true;
+
 		$targetMajor = SemVer::getMajor( $majorUpdate->newVersion );
 		$allowUrl    = $this->getAllowMajorUpdateUrl( $targetMajor );
 		$pluginName  = ! empty( $pluginData['Name'] ) ? (string) $pluginData['Name'] : $this->config->slug;
 
 		$columns = 3;
-		if ( \function_exists( 'wp_is_auto_update_enabled_for_type' ) && \wp_is_auto_update_enabled_for_type( 'plugin' ) ) {
+		if ( isset( $GLOBALS['wp_list_table'] ) && \is_object( $GLOBALS['wp_list_table'] ) && \method_exists( $GLOBALS['wp_list_table'], 'get_column_count' ) ) {
+			$columns = $GLOBALS['wp_list_table']->get_column_count();
+		} elseif ( \function_exists( 'wp_is_auto_update_enabled_for_type' ) && \wp_is_auto_update_enabled_for_type( 'plugin' ) ) {
 			$columns = 4;
 		}
 

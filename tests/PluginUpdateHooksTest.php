@@ -379,6 +379,41 @@ class PluginUpdateHooksTest extends TestCase {
 	}
 
 	/**
+	 * Test rendering major update row on-demand when transient was not pre-populated.
+	 */
+	public function testRenderAfterPluginRowOnDemandResolution(): void {
+		$pluginBasename = 'my-plugin/my-plugin.php';
+
+		$GLOBALS['wp_remote_get_response'] = array(
+			'response' => array( 'code' => 200 ),
+			'body'     => \wp_json_encode(
+				array(
+					'patch'    => null,
+					'minor'    => null,
+					'major'    => array(
+						'new_version' => '2.0.3',
+						'package'     => 'https://example.com/2.0.3.zip',
+					),
+					'versions' => array( '2.0.3' ),
+				)
+			),
+		);
+
+		$hooks = new PluginUpdateHooks( $this->config );
+
+		// Notice: checkUpdate was NOT called beforehand; transient is empty.
+		$this->assertNull( $GLOBALS['wp_transients'][ 'jcore_maj_' . substr( md5( 'my-plugin' ), 0, 16 ) ] ?? null );
+
+		\ob_start();
+		$hooks->renderAfterPluginRow( $pluginBasename, array( 'Name' => 'My Plugin' ) );
+		$output = \ob_get_clean();
+
+		$this->assertStringContainsString( 'plugin-update-tr', $output );
+		$this->assertStringContainsString( '2.0.3', $output );
+		$this->assertStringContainsString( 'Allow upgrade to v2.x', $output );
+	}
+
+	/**
 	 * Test register and unregister.
 	 */
 	public function testRegisterAndUnregister(): void {
