@@ -1,5 +1,11 @@
 # Changelog
 
+### v1.3.2 (2026-09-15)
+
+#### Maintenance
+
+- repo: refactor major update check logic (a400146)
+
 ### v1.3.1 (2026-09-15)
 
 #### Bug Fixes
