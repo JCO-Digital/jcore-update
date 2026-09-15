@@ -73,20 +73,30 @@ jobs:
 
       # 3a. Scope jcore-update's namespace, if this plugin bundles it.
       #
-      # Verified end-to-end against jcore-dummy (v1.3.2): renames the
-      # library's classes, patches this plugin's own references to them
-      # (use-statements, static calls, and class_exists()-style string
-      # literals), and confirmed an old unscoped v1.2.0 copy loaded
-      # first in the same request no longer contaminates the scoped
-      # copy loaded after it. See build/scoper-config.php in jcore-update
-      # for the full rationale.
+      # Verified end-to-end against jcore-dummy (v1.3.2 and v1.4.0):
+      # renames the library's classes, patches this plugin's own
+      # references to them (use-statements, static calls, and
+      # class_exists()-style string literals), and confirmed an old
+      # unscoped v1.2.0 copy loaded first in the same request no longer
+      # contaminates the scoped copy loaded after it. See
+      # build/scoper-config.php in jcore-update for the full rationale.
       #
-      # The installed.json patch below is required, not optional:
-      # `composer dump-autoload` trusts the autoload rules already
-      # cached there rather than re-reading each package's composer.json
-      # or file contents, so the cached PSR-4 rule for jcore-update must
-      # be switched to a classmap rule before the renamed classes can be
-      # found at all.
+      # The installed.json patch below is required, not optional: it
+      # remaps the cached PSR-4 prefix for jcore-update from `Jcore\Update\`
+      # to the new prefixed one, still pointing at the same src/ directory
+      # — php-scoper only rewrites the leading namespace segments and
+      # never moves files, so the path underneath is unchanged.
+      #
+      # An earlier version of this step instead switched the package to
+      # a classmap declaration plus `composer dump-autoload
+      # --classmap-authoritative`. That caused a real production fatal
+      # ("Class ... not found") because classmap-authoritative mode
+      # removes PHP's normal autoload fallback entirely: if a class is
+      # ever missing from the pre-built map for any reason, it's a hard,
+      # unrecoverable failure with no filesystem check at all. Plain PSR-4
+      # has no such cliff — it computes the file path live on every
+      # lookup — so remapping the prefix instead of switching to a
+      # classmap is the strictly safer fix for the same problem.
       - name: Scope jcore-update namespace
         if: ${{ inputs.build }}
         run: |
@@ -115,15 +125,15 @@ jobs:
           rsync -a .scoped-tmp/ ./
           rm -rf .scoped-tmp php-scoper.phar
 
-          # Required: switch jcore-update's cached autoload rule from
-          # psr-4 (path-based, breaks once the namespace no longer
-          # matches the path) to classmap (content-based, finds the
-          # renamed classes regardless).
-          jq '(.packages[] | select(.name=="jcodigital/jcore-update") | .autoload) = {"classmap": ["src/"]}' \
+          # Remap the cached PSR-4 prefix to match the renamed namespace,
+          # still pointing at src/ — the file layout under that prefix is
+          # unchanged by scoping.
+          jq --arg prefix "$JCORE_SCOPE_PREFIX" \
+            '(.packages[] | select(.name=="jcodigital/jcore-update") | .autoload) = {"psr-4": {($prefix + "\\Jcore\\Update\\"): "src/"}}' \
             vendor/composer/installed.json > vendor/composer/installed.json.tmp
           mv vendor/composer/installed.json.tmp vendor/composer/installed.json
 
-          composer dump-autoload --classmap-authoritative --no-dev
+          composer dump-autoload --no-dev
       - name: Zip
         run: |
           mkdir -p release

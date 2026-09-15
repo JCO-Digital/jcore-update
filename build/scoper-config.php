@@ -33,16 +33,25 @@
  *
  * IMPORTANT — this alone is not sufficient. After scoping, you must also
  * patch the *cached* autoload metadata for this package before running
- * `composer dump-autoload --classmap-authoritative`, or the renamed
- * classes will not be found at runtime: `composer dump-autoload` does
- * NOT re-parse each installed package's files or its composer.json — it
- * trusts the autoload rules already cached in
- * vendor/composer/installed.json. Since this package is declared as
- * PSR-4 (path-based), that cached rule must be switched to a classmap
- * declaration (which is content-based, so it finds the renamed classes
- * regardless of what namespace they now claim to be). See the workflow
- * step for the exact patch — this was only discovered by actually
- * running the process end-to-end, not by reading the config schema.
+ * `composer dump-autoload`, or the renamed classes will not be found at
+ * runtime: `composer dump-autoload` does NOT re-parse each installed
+ * package's files or its composer.json — it trusts the autoload rules
+ * already cached in vendor/composer/installed.json. That cached PSR-4
+ * prefix (`Jcore\Update\`) must be remapped to the new prefixed one,
+ * still pointing at the same src/ directory — scoping only rewrites the
+ * leading namespace segments, it never moves files. See the workflow
+ * step for the exact patch.
+ *
+ * Do NOT "fix" this instead by switching the package to a classmap
+ * declaration plus `composer dump-autoload --classmap-authoritative`.
+ * That was the original approach here and it caused a real production
+ * fatal ("Class ... not found") the first time it shipped: authoritative
+ * classmap mode removes PHP's normal autoload fallback — if a class is
+ * ever missing from the pre-built map for any reason, it's a hard,
+ * unrecoverable failure with no filesystem check at all, unlike plain
+ * PSR-4 which computes the file path live on every lookup and simply
+ * returns nothing if it's not there. Remapping the PSR-4 prefix avoids
+ * that failure mode entirely.
  */
 
 declare(strict_types=1);
