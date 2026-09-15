@@ -1,5 +1,15 @@
 # Changelog
 
+### v1.3.1 (2026-09-15)
+
+#### Bug Fixes
+
+- plugin: support on-demand major update check and row rendering (a85daa9)
+
+#### Continuous Integration
+
+- workflow: simplify slack notification condition (a833a91)
+
 ## v1.3.0 (2026-09-15)
 
 #### Features
