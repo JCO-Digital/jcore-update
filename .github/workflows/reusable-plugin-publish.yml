@@ -45,8 +45,6 @@ jobs:
     runs-on: ubuntu-latest
     permissions:
       contents: write
-    env:
-      SLACK_TOKEN_PROVIDED: ${{ secrets.SLACK_TOKEN != '' }}
     steps:
       # 1. Checkout the tag created by foonver
       - uses: actions/checkout@v4
@@ -189,7 +187,7 @@ jobs:
 
       # 8. Notify Slack (Optional)
       - name: Notify Slack
-        if: ${{ inputs.slack_channel != '' && env.SLACK_TOKEN_PROVIDED == 'true' }}
+        if: ${{ inputs.slack_channel != '' }}
         uses: slackapi/slack-github-action@v1.27.0
         with:
           channel-id: ${{ inputs.slack_channel }}
