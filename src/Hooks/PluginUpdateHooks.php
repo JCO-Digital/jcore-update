@@ -379,18 +379,29 @@ final class PluginUpdateHooks {
 			$licenseKey   = $this->resolveLicenseKey();
 			$updateResult = $this->client->checkForUpdate( $this->config->version, $licenseKey, 'all' );
 
-			if ( $updateResult->success ) {
-				$candidate = $updateResult->majorPayload;
-				if ( $candidate === null && $updateResult->payload !== null ) {
-					if ( SemVer::getMajor( $updateResult->payload->newVersion ) > SemVer::getMajor( $this->config->version ) ) {
-						$candidate = $updateResult->payload;
-					}
-				}
+			if ( ! $updateResult->success ) {
+				$this->logger->debug(
+					'JCORE on-demand major update check failed; no major update button will be shown.',
+					array(
+						'slug'      => $this->config->slug,
+						'errorCode' => $updateResult->errorCode,
+						'message'   => $updateResult->message,
+					)
+				);
 
-				if ( $candidate !== null && SemVer::getMajor( $candidate->newVersion ) > $this->getAllowedMajorVersion() ) {
-					$this->setAvailableMajorUpdate( $candidate );
-					return $candidate;
+				return null;
+			}
+
+			$candidate = $updateResult->majorPayload;
+			if ( $candidate === null && $updateResult->payload !== null ) {
+				if ( SemVer::getMajor( $updateResult->payload->newVersion ) > SemVer::getMajor( $this->config->version ) ) {
+					$candidate = $updateResult->payload;
 				}
+			}
+
+			if ( $candidate !== null && SemVer::getMajor( $candidate->newVersion ) > $this->getAllowedMajorVersion() ) {
+				$this->setAvailableMajorUpdate( $candidate );
+				return $candidate;
 			}
 		}
 
