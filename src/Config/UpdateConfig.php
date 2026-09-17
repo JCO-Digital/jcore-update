@@ -12,6 +12,7 @@ namespace Jcore\Update\Config;
 use Closure;
 use Jcore\Update\Licensing\LicenseProviderInterface;
 use Jcore\Update\Support\LoggerInterface;
+use Jcore\Update\Support\PluginHelper;
 
 /**
  * Class UpdateConfig
@@ -21,11 +22,18 @@ use Jcore\Update\Support\LoggerInterface;
 final class UpdateConfig {
 
 	/**
+	 * The current version.
+	 *
+	 * @var string
+	 */
+	public readonly string $version;
+
+	/**
 	 * UpdateConfig constructor.
 	 *
 	 * @param string                        $pluginFile                The main plugin file path.
 	 * @param string                        $slug                      The plugin slug.
-	 * @param string                        $version                   The current version.
+	 * @param string|null                   $version                   Optional current version (auto-detected from pluginFile if omitted or empty).
 	 * @param string                        $apiBaseUrl                The API base URL.
 	 * @param string|null                   $licenseKey                Optional hardcoded license key.
 	 * @param LicenseProviderInterface|null $licenseProvider           Optional license provider.
@@ -41,8 +49,8 @@ final class UpdateConfig {
 	public function __construct(
 		public readonly string $pluginFile,
 		public readonly string $slug,
-		public readonly string $version,
-		public readonly string $apiBaseUrl,
+		?string $version = null,
+		public readonly string $apiBaseUrl = '',
 		public readonly ?string $licenseKey = null,
 		public readonly ?LicenseProviderInterface $licenseProvider = null,
 		public readonly int $requestTimeout = 10,
@@ -59,6 +67,12 @@ final class UpdateConfig {
 		if ( $this->slug === '' ) {
 			throw new \InvalidArgumentException( 'slug must not be empty.' );
 		}
+
+		$resolvedVersion = $version ?? '';
+		if ( $resolvedVersion === '' ) {
+			$resolvedVersion = PluginHelper::getVersion( $this->pluginFile );
+		}
+		$this->version = $resolvedVersion;
 
 		if ( $this->version === '' ) {
 			throw new \InvalidArgumentException( 'version must not be empty.' );

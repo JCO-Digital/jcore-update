@@ -7,6 +7,9 @@
 
 declare(strict_types=1);
 
+// phpcs:disable WordPress.WP.AlternativeFunctions.unlink_unlink
+// phpcs:disable WordPress.WP.AlternativeFunctions.file_system_operations_file_put_contents
+
 namespace Jcore\Update\Tests;
 
 use Jcore\Update\Config\UpdateConfig;
@@ -17,6 +20,29 @@ use InvalidArgumentException;
  * Class UpdateConfigTest
  */
 class UpdateConfigTest extends TestCase {
+
+	/**
+	 * Temp file path.
+	 *
+	 * @var string
+	 */
+	private string $tempFile;
+
+	/**
+	 * Sets up the test.
+	 */
+	protected function setUp(): void {
+		$this->tempFile = tempnam( sys_get_temp_dir(), 'wp-plugin' );
+	}
+
+	/**
+	 * Tears down the test.
+	 */
+	protected function tearDown(): void {
+		if ( file_exists( $this->tempFile ) ) {
+			unlink( $this->tempFile );
+		}
+	}
 
 	/**
 	 * Test valid configuration.
@@ -52,6 +78,51 @@ class UpdateConfigTest extends TestCase {
 	}
 
 	/**
+	 * Test version auto-detection from pluginFile when version is null/omitted.
+	 */
+	public function testAutoDetectVersionFromPluginFile(): void {
+		$content = <<<'PHP'
+<?php
+/**
+ * Plugin Name: My Plugin
+ * Version: 1.4.2
+ */
+PHP;
+		file_put_contents( $this->tempFile, $content );
+
+		$config = new UpdateConfig(
+			pluginFile: $this->tempFile,
+			slug: 'my-plugin',
+			apiBaseUrl: 'https://api.example.com/'
+		);
+
+		$this->assertSame( '1.4.2', $config->version );
+	}
+
+	/**
+	 * Test version auto-detection from pluginFile when version is explicitly empty string.
+	 */
+	public function testAutoDetectVersionWhenEmptyStringPassed(): void {
+		$content = <<<'PHP'
+<?php
+/**
+ * Plugin Name: My Plugin
+ * Version: 1.4.2
+ */
+PHP;
+		file_put_contents( $this->tempFile, $content );
+
+		$config = new UpdateConfig(
+			pluginFile: $this->tempFile,
+			slug: 'my-plugin',
+			version: '',
+			apiBaseUrl: 'https://api.example.com/'
+		);
+
+		$this->assertSame( '1.4.2', $config->version );
+	}
+
+	/**
 	 * Test that empty plugin file throws exception.
 	 */
 	public function testEmptyPluginFileThrowsException(): void {
@@ -82,14 +153,14 @@ class UpdateConfigTest extends TestCase {
 	}
 
 	/**
-	 * Test that empty version throws exception.
+	 * Test that empty version throws exception when version cannot be auto-detected.
 	 */
 	public function testEmptyVersionThrowsException(): void {
 		$this->expectException( InvalidArgumentException::class );
 		$this->expectExceptionMessage( 'version must not be empty.' );
 
 		new UpdateConfig(
-			pluginFile: '/path/to/plugin.php',
+			pluginFile: '/path/to/nonexistent-plugin.php',
 			slug: 'my-plugin',
 			version: '',
 			apiBaseUrl: 'https://api.example.com/'
