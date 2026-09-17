@@ -1,5 +1,19 @@
 # Changelog
 
+## v1.5.0 (2026-09-17)
+
+#### Features
+
+- config: support plugin version auto-detection (eca6969)
+
+#### Bug Fixes
+
+- ci: remap PSR-4 prefix instead of forcing classmap-authoritative (ac1cc1d)
+
+#### Maintenance
+
+- config: rename foonver.toml to hidden file (c111daa)
+
 ## v1.4.0 (2026-09-15)
 
 #### Features
