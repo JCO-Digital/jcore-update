@@ -1,5 +1,11 @@
 # Changelog
 
+## v1.6.0 (2026-09-22)
+
+#### Features
+
+- publish: build the zip from .distignore when no .zipexclude exists (8764480)
+
 ## v1.5.0 (2026-09-17)
 
 #### Features
