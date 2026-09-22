@@ -134,13 +134,42 @@ jobs:
           mv vendor/composer/installed.json.tmp vendor/composer/installed.json
 
           composer dump-autoload --no-dev
+      # Exclude lists, in order of precedence:
+      #
+      #   .zipexclude / zip_exclude.txt  zip's own -x@ patterns, matched
+      #                                  against the whole archive path.
+      #   .distignore                    rsync/gitignore patterns, the same
+      #                                  list the dist repo step below reads.
+      #
+      # The two syntaxes are not interchangeable: an unanchored `src` excludes
+      # every src/ at any depth for rsync, including vendor packages', while
+      # zip only matches it at the root. So a plugin that still ships a
+      # .zipexclude keeps using it, and only a plugin that has deleted it --
+      # having anchored its .distignore patterns with a leading slash -- gets
+      # the single-list behaviour. The .distignore path also assembles into a
+      # directory named after the slug first, so the zip carries the usual
+      # top-level plugin folder.
       - name: Zip
         run: |
+          set -e
           mkdir -p release
+
           if [ -f .zipexclude ]; then
             zip -r release/${{ inputs.slug }}.zip . -x@.zipexclude
           elif [ -f zip_exclude.txt ]; then
             zip -r release/${{ inputs.slug }}.zip . -x@zip_exclude.txt
+          elif [ -f .distignore ]; then
+            rm -rf .dist-build
+            mkdir -p ".dist-build/${{ inputs.slug }}"
+            rsync -a \
+              --exclude=.git/ \
+              --exclude=.dist-build/ \
+              --exclude=release/ \
+              --exclude=.distignore \
+              --exclude-from=.distignore \
+              ./ ".dist-build/${{ inputs.slug }}/"
+            ( cd .dist-build && zip -qr "../release/${{ inputs.slug }}.zip" "${{ inputs.slug }}" )
+            rm -rf .dist-build
           else
             zip -r release/${{ inputs.slug }}.zip . -x "release/*" ".git/*" ".github/*"
           fi
