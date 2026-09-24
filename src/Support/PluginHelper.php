@@ -67,6 +67,58 @@ final class PluginHelper {
 	}
 
 	/**
+	 * Reads the standard plugin headers from the main plugin file.
+	 *
+	 * Uses `get_file_data()` when WordPress is loaded and falls back to a
+	 * header regex otherwise. Missing headers are returned as empty strings.
+	 *
+	 * @param string $pluginFile The main plugin file path.
+	 *
+	 * @return array{Name: string, PluginURI: string, Version: string, Description: string, Author: string, AuthorURI: string, RequiresWP: string, RequiresPHP: string}
+	 */
+	public static function getPluginData( string $pluginFile ): array {
+		$headers = array(
+			'Name'        => 'Plugin Name',
+			'PluginURI'   => 'Plugin URI',
+			'Version'     => 'Version',
+			'Description' => 'Description',
+			'Author'      => 'Author',
+			'AuthorURI'   => 'Author URI',
+			'RequiresWP'  => 'Requires at least',
+			'RequiresPHP' => 'Requires PHP',
+		);
+
+		$data = \array_fill_keys( \array_keys( $headers ), '' );
+
+		if ( $pluginFile === '' || ! \is_file( $pluginFile ) || ! \is_readable( $pluginFile ) ) {
+			return $data;
+		}
+
+		if ( \function_exists( 'get_file_data' ) ) {
+			$fileData = \get_file_data( $pluginFile, $headers, 'plugin' );
+			foreach ( $data as $key => $unused ) {
+				$data[ $key ] = isset( $fileData[ $key ] ) && \is_string( $fileData[ $key ] ) ? \trim( $fileData[ $key ] ) : '';
+			}
+
+			return $data;
+		}
+
+		// phpcs:ignore WordPress.WP.AlternativeFunctions.file_get_contents_file_get_contents
+		$content = \file_get_contents( $pluginFile, false, null, 0, 8192 );
+		if ( $content === false ) {
+			return $data;
+		}
+
+		foreach ( $headers as $key => $header ) {
+			if ( \preg_match( '/^[ \t\/*#@]*' . \preg_quote( $header, '/' ) . ':(.*)$/mi', $content, $matches ) ) {
+				$data[ $key ] = \trim( (string) \preg_replace( '/\s*(?:\*\/|\?>).*/', '', $matches[1] ) );
+			}
+		}
+
+		return $data;
+	}
+
+	/**
 	 * Extracts the Version header from a single PHP file.
 	 *
 	 * @param string $filePath The file path.

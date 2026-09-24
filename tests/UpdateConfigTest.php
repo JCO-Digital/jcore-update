@@ -63,6 +63,28 @@ class UpdateConfigTest extends TestCase {
 	}
 
 	/**
+	 * Test readme path defaults to readme.txt beside the plugin file and can be overridden.
+	 */
+	public function testReadmeFile(): void {
+		$config = new UpdateConfig(
+			pluginFile: '/var/www/html/wp-content/plugins/my-plugin/my-plugin.php',
+			slug: 'my-plugin',
+			version: '1.0.0',
+			apiBaseUrl: 'https://api.example.com'
+		);
+		$this->assertSame( '/var/www/html/wp-content/plugins/my-plugin/readme.txt', $config->readmeFile );
+
+		$custom = new UpdateConfig(
+			pluginFile: '/var/www/html/wp-content/plugins/my-plugin/my-plugin.php',
+			slug: 'my-plugin',
+			version: '1.0.0',
+			apiBaseUrl: 'https://api.example.com',
+			readmeFile: '/elsewhere/README.txt'
+		);
+		$this->assertSame( '/elsewhere/README.txt', $custom->readmeFile );
+	}
+
+	/**
 	 * Test custom filterMajorUpdates configuration.
 	 */
 	public function testCustomFilterMajorUpdates(): void {

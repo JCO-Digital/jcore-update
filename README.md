@@ -80,6 +80,27 @@ $config = new UpdateConfig(
 );
 ```
 
+## Plugin information popup
+
+The "View details" popup on the Plugins screen is served from `plugins_api`. The update service only answers when a newer release exists, and its changelog carries just the newest entry. The library completes the popup from the plugin's bundled `readme.txt`:
+
+- description, installation, FAQ, screenshots and changelog sections are parsed from the readme and rendered as HTML
+- the service's changelog entry is placed on top of the readme's full changelog, unless the readme already lists that version
+- when the plugin is up to date, the popup describes the installed release (name, version, author, tested-up-to) instead of failing with "Plugin not found"
+
+The readme is expected at `readme.txt` next to the main plugin file. Point elsewhere with `readmeFile`:
+
+```php
+$config = new UpdateConfig(
+    pluginFile: __FILE__,
+    slug: 'my-plugin-slug',
+    apiBaseUrl: 'https://api.example.com/v1',
+    readmeFile: __DIR__ . '/docs/readme.txt',
+);
+```
+
+If the readme is missing, the popup behaves as before.
+
 ## Notes
 
 - `GET /v1/update-check` is used for update checks and plugin detail payloads.

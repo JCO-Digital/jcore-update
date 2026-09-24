@@ -27,6 +27,13 @@ class PluginUpdateHooksTest extends TestCase {
 	private UpdateConfig $config;
 
 	/**
+	 * Temporary plugin directories to clean up.
+	 *
+	 * @var string[]
+	 */
+	private array $tempDirs = array();
+
+	/**
 	 * Set up the test.
 	 */
 	protected function setUp(): void {
@@ -42,6 +49,140 @@ class PluginUpdateHooksTest extends TestCase {
 		$GLOBALS['wp_remote_get_response']  = null;
 		$GLOBALS['wp_remote_post_response'] = null;
 		$_GET                               = array();
+	}
+
+	/**
+	 * Creates a temporary plugin directory with a main file and optional readme.
+	 *
+	 * @param bool $withReadme Whether to write a readme.txt.
+	 *
+	 * @return string The main plugin file path.
+	 */
+	private function createTempPlugin( bool $withReadme = true ): string {
+		$dir = sys_get_temp_dir() . '/jcore-update-popup-' . uniqid();
+		mkdir( $dir, 0777, true ); // phpcs:ignore WordPress.WP.AlternativeFunctions.file_system_operations_mkdir
+
+		$pluginFile = $dir . '/my-plugin.php';
+		file_put_contents( // phpcs:ignore WordPress.WP.AlternativeFunctions.file_system_operations_file_put_contents
+			$pluginFile,
+			"<?php\n/**\n * Plugin Name: My Plugin\n * Plugin URI: https://example.com/my-plugin\n * Version: 1.2.0\n"
+			. " * Author: J&Co\n * Author URI: https://jco.fi\n * Requires at least: 6.7\n * Requires PHP: 8.2\n */\n"
+		);
+
+		if ( $withReadme ) {
+			file_put_contents( $dir . '/readme.txt', ReadmeTest::sampleReadme() ); // phpcs:ignore WordPress.WP.AlternativeFunctions.file_system_operations_file_put_contents
+		}
+
+		$this->tempDirs[] = $dir;
+
+		return $pluginFile;
+	}
+
+	/**
+	 * Removes temporary plugin directories.
+	 */
+	protected function tearDown(): void {
+		foreach ( $this->tempDirs as $dir ) {
+			$files = glob( $dir . '/*' );
+			foreach ( is_array( $files ) ? $files : array() as $file ) {
+				unlink( $file ); // phpcs:ignore WordPress.WP.AlternativeFunctions.unlink_unlink
+			}
+			rmdir( $dir ); // phpcs:ignore WordPress.WP.AlternativeFunctions.file_system_operations_rmdir
+		}
+		$this->tempDirs = array();
+	}
+
+	/**
+	 * Test the popup describes the installed plugin when no update exists.
+	 */
+	public function testPluginPopupWithoutUpdateUsesReadme(): void {
+		$config = new UpdateConfig(
+			pluginFile: $this->createTempPlugin(),
+			slug: 'my-plugin',
+			version: '1.2.0',
+			apiBaseUrl: 'https://api.example.com'
+		);
+
+		$GLOBALS['wp_remote_get_response'] = array(
+			'response' => array( 'code' => 204 ),
+			'body'     => '',
+		);
+
+		$hooks  = new PluginUpdateHooks( $config );
+		$result = $hooks->pluginPopup( false, 'plugin_information', (object) array( 'slug' => 'my-plugin' ) );
+
+		$this->assertInstanceOf( stdClass::class, $result );
+		$this->assertSame( 'My Plugin', $result->name );
+		$this->assertSame( '1.2.0', $result->version );
+		$this->assertSame( '7.1', $result->tested );
+		$this->assertSame( '6.7', $result->requires );
+		$this->assertSame( '8.2', $result->requires_php );
+		$this->assertSame( 'https://example.com/my-plugin', $result->homepage );
+		$this->assertSame( '<a href="https://jco.fi">J&amp;Co</a>', $result->author );
+		$this->assertObjectNotHasProperty( 'download_link', $result );
+		$this->assertSame( array( 'description', 'installation', 'faq', 'changelog' ), array_keys( $result->sections ) );
+		$this->assertStringStartsWith( '<h4>1.2.0 (2026-09-24)</h4>', $result->sections['changelog'] );
+	}
+
+	/**
+	 * Test the popup is left alone when there is no update and no readme.
+	 */
+	public function testPluginPopupWithoutUpdateOrReadmeIsUntouched(): void {
+		$config = new UpdateConfig(
+			pluginFile: $this->createTempPlugin( false ),
+			slug: 'my-plugin',
+			version: '1.2.0',
+			apiBaseUrl: 'https://api.example.com'
+		);
+
+		$GLOBALS['wp_remote_get_response'] = array(
+			'response' => array( 'code' => 204 ),
+			'body'     => '',
+		);
+
+		$hooks = new PluginUpdateHooks( $config );
+
+		$this->assertFalse( $hooks->pluginPopup( false, 'plugin_information', (object) array( 'slug' => 'my-plugin' ) ) );
+		$this->assertFalse( $hooks->pluginPopup( false, 'plugin_information', (object) array( 'slug' => 'other' ) ) );
+		$this->assertFalse( $hooks->pluginPopup( false, 'query_plugins', (object) array( 'slug' => 'my-plugin' ) ) );
+	}
+
+	/**
+	 * Test the popup merges the service changelog with the readme when an update exists.
+	 */
+	public function testPluginPopupWithUpdateMergesChangelog(): void {
+		$config = new UpdateConfig(
+			pluginFile: $this->createTempPlugin(),
+			slug: 'my-plugin',
+			version: '1.2.0',
+			apiBaseUrl: 'https://api.example.com'
+		);
+
+		$GLOBALS['wp_remote_get_response'] = array(
+			'response' => array( 'code' => 200 ),
+			'body'     => \wp_json_encode(
+				array(
+					'new_version' => '1.3.0',
+					'package'     => 'https://example.com/my-plugin-1.3.0.zip',
+					'sections'    => array( 'changelog' => "= 1.3.0 (2026-10-01) =\n\n* Feature: brand new\n" ),
+				)
+			),
+		);
+
+		$hooks  = new PluginUpdateHooks( $config );
+		$result = $hooks->pluginPopup( false, 'plugin_information', (object) array( 'slug' => 'my-plugin' ) );
+
+		$this->assertInstanceOf( stdClass::class, $result );
+		$this->assertSame( '1.3.0', $result->version );
+		$this->assertSame( 'https://example.com/my-plugin-1.3.0.zip', $result->download_link );
+		$this->assertSame( '7.1', $result->tested );
+		$this->assertArrayHasKey( 'description', $result->sections );
+		$this->assertSame(
+			'<h4>1.3.0 (2026-10-01)</h4><ul><li>Feature: brand new</li></ul>'
+			. '<h4>1.2.0 (2026-09-24)</h4><ul><li>Feature: something new</li></ul>'
+			. '<h4>v1.1.0</h4><ul><li>Fix: something old</li></ul>',
+			$result->sections['changelog']
+		);
 	}
 
 	/**

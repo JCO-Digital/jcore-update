@@ -29,6 +29,13 @@ final class UpdateConfig {
 	public readonly string $version;
 
 	/**
+	 * Path to the plugin's readme.txt, used to complete the information popup.
+	 *
+	 * @var string
+	 */
+	public readonly string $readmeFile;
+
+	/**
 	 * UpdateConfig constructor.
 	 *
 	 * @param string                        $pluginFile                The main plugin file path.
@@ -43,6 +50,7 @@ final class UpdateConfig {
 	 * @param bool                          $filterMajorUpdates        Whether to filter major version updates by default.
 	 * @param Closure|null                  $httpArgsFilter            Optional closure to filter HTTP args.
 	 * @param LoggerInterface|null          $logger                    Optional logger.
+	 * @param string|null                   $readmeFile                Optional readme.txt path (defaults to readme.txt beside pluginFile).
 	 *
 	 * @throws \InvalidArgumentException If required parameters are empty.
 	 */
@@ -59,6 +67,7 @@ final class UpdateConfig {
 		public readonly bool $filterMajorUpdates = true,
 		public readonly ?Closure $httpArgsFilter = null,
 		public readonly ?LoggerInterface $logger = null,
+		?string $readmeFile = null,
 	) {
 		if ( $this->pluginFile === '' ) {
 			throw new \InvalidArgumentException( 'pluginFile must not be empty.' );
@@ -77,6 +86,8 @@ final class UpdateConfig {
 		if ( $this->version === '' ) {
 			throw new \InvalidArgumentException( 'version must not be empty.' );
 		}
+
+		$this->readmeFile = $readmeFile ?? \dirname( $this->pluginFile ) . '/readme.txt';
 
 		if ( $this->apiBaseUrl === '' ) {
 			throw new \InvalidArgumentException( 'apiBaseUrl must not be empty.' );
