@@ -14,6 +14,8 @@ use Jcore\Update\Config\UpdateConfig;
 use Jcore\Update\Licensing\LicenseValidationResult;
 use Jcore\Update\Support\LoggerInterface;
 use Jcore\Update\Support\NullLogger;
+use Jcore\Update\Support\PluginHelper;
+use Jcore\Update\Support\Readme;
 use Jcore\Update\Support\SemVer;
 use Jcore\Update\ValueObject\PluginInfoPayload;
 use Jcore\Update\ValueObject\UpdatePayload;
@@ -231,32 +233,40 @@ final class PluginUpdateHooks {
 		$channel      = $this->config->filterMajorUpdates ? 'all' : null;
 		$updateResult = $this->client->checkForUpdate( $this->config->version, $licenseKey, $channel );
 
-		if ( ! $updateResult->success ) {
-			return $result;
-		}
+		$payload = null;
 
-		$payload      = null;
-		$allowedMajor = $this->getAllowedMajorVersion();
+		if ( $updateResult->success ) {
+			$allowedMajor = $this->getAllowedMajorVersion();
 
-		if ( $this->config->filterMajorUpdates ) {
-			if ( $updateResult->payload !== null && SemVer::getMajor( $updateResult->payload->newVersion ) <= $allowedMajor ) {
-				$payload = $updateResult->payload;
-			} elseif ( $updateResult->majorPayload !== null && SemVer::getMajor( $updateResult->majorPayload->newVersion ) <= $allowedMajor ) {
-				$payload = $updateResult->majorPayload;
+			if ( $this->config->filterMajorUpdates ) {
+				if ( $updateResult->payload !== null && SemVer::getMajor( $updateResult->payload->newVersion ) <= $allowedMajor ) {
+					$payload = $updateResult->payload;
+				} elseif ( $updateResult->majorPayload !== null && SemVer::getMajor( $updateResult->majorPayload->newVersion ) <= $allowedMajor ) {
+					$payload = $updateResult->majorPayload;
+				} else {
+					$payload = $updateResult->majorPayload ?? $updateResult->payload;
+				}
 			} else {
-				$payload = $updateResult->majorPayload ?? $updateResult->payload;
+				$payload = $updateResult->payload ?? $updateResult->majorPayload;
 			}
-		} else {
-			$payload = $updateResult->payload ?? $updateResult->majorPayload;
 		}
 
-		if ( $payload === null ) {
+		$readme = new Readme( $this->config->readmeFile );
+
+		if ( $payload !== null ) {
+			$info   = PluginInfoPayload::fromUpdatePayload( $this->config->slug, $payload );
+			$object = $this->toPluginInfoObject( $info );
+
+			return $this->completeFromReadme( $object, $readme );
+		}
+
+		// Nothing to update to: describe the installed release instead of
+		// letting WordPress ask wordpress.org, which does not know this plugin.
+		if ( ! $readme->exists() ) {
 			return $result;
 		}
 
-		$info = PluginInfoPayload::fromUpdatePayload( $this->config->slug, $payload );
-
-		return $this->toPluginInfoObject( $info );
+		return $this->completeFromReadme( $this->toInstalledInfoObject( $readme ), $readme );
 	}
 
 	/**
@@ -781,6 +791,83 @@ final class PluginUpdateHooks {
 		}
 
 		return $response;
+	}
+
+	/**
+	 * Builds a plugin information object from the installed plugin's headers.
+	 *
+	 * @param Readme $readme The plugin readme.
+	 *
+	 * @return stdClass
+	 */
+	private function toInstalledInfoObject( Readme $readme ): stdClass {
+		$data = PluginHelper::getPluginData( $this->config->pluginFile );
+
+		$object               = new stdClass();
+		$object->name         = $data['Name'] !== '' ? $data['Name'] : $this->config->slug;
+		$object->slug         = $this->config->slug;
+		$object->version      = $this->config->version;
+		$object->tested       = $readme->header( 'Tested up to' );
+		$object->requires     = $data['RequiresWP'] !== '' ? $data['RequiresWP'] : $readme->header( 'Requires at least' );
+		$object->requires_php = $data['RequiresPHP'] !== '' ? $data['RequiresPHP'] : $readme->header( 'Requires PHP' );
+		$object->sections     = array();
+
+		if ( $data['PluginURI'] !== '' ) {
+			$object->homepage = $data['PluginURI'];
+		}
+
+		if ( $data['Author'] !== '' ) {
+			$author = \function_exists( 'esc_html' ) ? \esc_html( $data['Author'] ) : \htmlspecialchars( $data['Author'], ENT_QUOTES, 'UTF-8' );
+
+			if ( $data['AuthorURI'] !== '' ) {
+				$url    = \function_exists( 'esc_url' ) ? \esc_url( $data['AuthorURI'] ) : \htmlspecialchars( $data['AuthorURI'], ENT_QUOTES, 'UTF-8' );
+				$author = '<a href="' . $url . '">' . $author . '</a>';
+			}
+
+			$object->author = $author;
+		}
+
+		return $object;
+	}
+
+	/**
+	 * Fills in popup sections from the bundled readme.
+	 *
+	 * The update service sends at most the newest changelog entry, in raw
+	 * readme markup. The readme supplies the description, the full changelog
+	 * and any other section the service left out.
+	 *
+	 * @param stdClass $info   The plugin information object.
+	 * @param Readme   $readme The plugin readme.
+	 *
+	 * @return stdClass
+	 */
+	private function completeFromReadme( stdClass $info, Readme $readme ): stdClass {
+		$sections = isset( $info->sections ) && \is_array( $info->sections ) ? $info->sections : array();
+		$local    = $readme->sections();
+
+		foreach ( $local as $key => $html ) {
+			if ( $key === 'changelog' ) {
+				continue;
+			}
+
+			if ( empty( $sections[ $key ] ) ) {
+				$sections[ $key ] = $html;
+			}
+		}
+
+		$changelog = Readme::mergeChangelog( $sections['changelog'] ?? '', $local['changelog'] ?? '' );
+		if ( $changelog !== '' ) {
+			$sections['changelog'] = $changelog;
+		}
+
+		$info->sections = $sections;
+
+		if ( empty( $info->tested ) ) {
+			$info->tested = $readme->header( 'Tested up to' );
+		}
+
+		return $info;
 	}
 
 	/**
