@@ -1,5 +1,11 @@
 # Changelog
 
+### v1.7.1 (2026-09-29)
+
+#### Bug Fixes
+
+- publish: publish unscoped sources to the dist repo (3531c5a)
+
 ## v1.7.0 (2026-09-29)
 
 #### Features
