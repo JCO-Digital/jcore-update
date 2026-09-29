@@ -226,6 +226,11 @@ jobs:
             exit 0
           fi
 
+          if [ ! -f composer.json ]; then
+            echo "::error::composer.json is required in the repository root to publish to a dist repo for Packagist."
+            exit 1
+          fi
+
           # Setup SSH
           ssh-agent -a $SSH_AUTH_SOCK > /dev/null
           ssh-add - <<< "$DIST_REPO_SSH_KEY"
@@ -236,22 +241,20 @@ jobs:
 
           # The scoping step rewrote this checkout in place so the zip is
           # self-contained. The dist repo is consumed through Composer,
-          # where the root project supplies one shared jcore-update, so
-          # it must get the unscoped sources: restore the tracked files
-          # and, if scoping ran, reinstall an unscoped vendor for plugins
-          # that ship it. Untracked build output is left in place.
+          # where the root project supplies dependencies (like jcore-update),
+          # so it must get the unscoped sources: restore the tracked files.
+          # vendor/ is managed by Composer at the root project level and
+          # must not be published to the dist repo. Untracked build output
+          # is left in place.
           git checkout -- .
-          if [ "${JCORE_SCOPED:-}" = "true" ]; then
-            composer install --no-dev --no-interaction --no-progress
-          fi
 
           # Clone dist repo
           git clone "$DIST_REPO" dist_repo_clone
 
           # Sync files
-          # 1. Start with hardcoded safety excludes
+          # 1. Start with hardcoded safety excludes and force-include composer.json
           # 2. Add .distignore if it exists to control project-specific excludes
-          EXCLUDES=("--exclude=.git/" "--exclude=.github/" "--exclude=node_modules/" "--exclude=dist_repo_clone/" "--exclude=release/")
+          EXCLUDES=("--exclude=.git/" "--exclude=.github/" "--exclude=node_modules/" "--exclude=vendor/" "--exclude=dist_repo_clone/" "--exclude=release/" "--include=/composer.json")
           if [ -f .distignore ]; then
             EXCLUDES+=("--exclude-from=.distignore")
           fi
@@ -263,7 +266,14 @@ jobs:
           # Handle dist-specific gitignore
           # If .distignore exists, it becomes the .gitignore for the dist repo
           if [ -f .distignore ]; then
-            mv .distignore .gitignore
+            if grep -qE '^/?composer\.json' .distignore; then
+              echo "::warning::.distignore contains composer.json, but composer.json was preserved for the dist repo."
+            fi
+            grep -vE '^/?composer\.json' .distignore > .gitignore
+            rm .distignore
+            if ! grep -qE '^/?vendor/?$' .gitignore; then
+              echo "/vendor/" >> .gitignore
+            fi
           fi
 
           # Drop files the dist repo still tracks from before they were
@@ -272,6 +282,12 @@ jobs:
           # would otherwise ship forever.
           git ls-files -z --cached --ignored --exclude-standard \
             | xargs -0 -r git rm --cached --quiet
+
+          # Ensure composer.json was synced and is not ignored
+          if [ ! -f composer.json ]; then
+            echo "::error::composer.json was not found in the dist repo after sync."
+            exit 1
+          fi
 
           # Commit, Tag and Push
           git config user.name "github-actions[bot]"
