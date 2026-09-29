@@ -134,6 +134,9 @@ jobs:
           mv vendor/composer/installed.json.tmp vendor/composer/installed.json
 
           composer dump-autoload --no-dev
+
+          # Tell the dist step below that this checkout has been rewritten.
+          echo "JCORE_SCOPED=true" >> "$GITHUB_ENV"
       # Exclude lists, in order of precedence:
       #
       #   .zipexclude / zip_exclude.txt  zip's own -x@ patterns, matched
@@ -231,6 +234,17 @@ jobs:
           HOSTNAME=$(echo $DIST_REPO | sed -E 's/.*@([^:/]+).*/\1/; s/([^:/]+):.*/\1/')
           ssh-keyscan -H "$HOSTNAME" >> ~/.ssh/known_hosts
 
+          # The scoping step rewrote this checkout in place so the zip is
+          # self-contained. The dist repo is consumed through Composer,
+          # where the root project supplies one shared jcore-update, so
+          # it must get the unscoped sources: restore the tracked files
+          # and, if scoping ran, reinstall an unscoped vendor for plugins
+          # that ship it. Untracked build output is left in place.
+          git checkout -- .
+          if [ "${JCORE_SCOPED:-}" = "true" ]; then
+            composer install --no-dev --no-interaction --no-progress
+          fi
+
           # Clone dist repo
           git clone "$DIST_REPO" dist_repo_clone
 
@@ -251,6 +265,13 @@ jobs:
           if [ -f .distignore ]; then
             mv .distignore .gitignore
           fi
+
+          # Drop files the dist repo still tracks from before they were
+          # added to .distignore. rsync --delete never removes excluded
+          # paths, so a stale vendor/ committed by an earlier release
+          # would otherwise ship forever.
+          git ls-files -z --cached --ignored --exclude-standard \
+            | xargs -0 -r git rm --cached --quiet
 
           # Commit, Tag and Push
           git config user.name "github-actions[bot]"
