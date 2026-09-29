@@ -1,5 +1,11 @@
 # Changelog
 
+## v1.7.0 (2026-09-29)
+
+#### Features
+
+- popup: complete plugin information from readme.txt (1e81d79)
+
 ## v1.6.0 (2026-09-22)
 
 #### Features
