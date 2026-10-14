@@ -180,10 +180,12 @@ jobs:
       # 4. Extract metadata from the PHP file
       - name: Extract metadata
         id: metadata
+        env:
+          PLUGIN_FILE: ${{ inputs.plugin_file }}
         run: |
-          echo "requires_wp=$(grep "Requires at least:" ${{ inputs.plugin_file }} | cut -d: -f2 | xargs)" >> $GITHUB_OUTPUT
-          echo "tested_wp=$(grep "Tested up to:" ${{ inputs.plugin_file }} | cut -d: -f2 | xargs)" >> $GITHUB_OUTPUT
-          echo "requires_php=$(grep "Requires PHP:" ${{ inputs.plugin_file }} | cut -d: -f2 | xargs)" >> $GITHUB_OUTPUT
+          echo "requires_wp=$(grep "Requires at least:" "$PLUGIN_FILE" | cut -d: -f2 | xargs)" >> $GITHUB_OUTPUT
+          echo "tested_wp=$(grep "Tested up to:" "$PLUGIN_FILE" | cut -d: -f2 | xargs)" >> $GITHUB_OUTPUT
+          echo "requires_php=$(grep "Requires PHP:" "$PLUGIN_FILE" | cut -d: -f2 | xargs)" >> $GITHUB_OUTPUT
 
       # 5. Create GitHub Release
       - name: Create GitHub Release
@@ -195,22 +197,34 @@ jobs:
           files: release/${{ inputs.slug }}.zip
 
       # 6. Notify Update API
+      # The release notes are commit subjects, so they are data: they reach
+      # the shell only as environment variables, and jq builds the JSON.
+      # Pasting them into the script would let a quote in a commit subject
+      # end the string and run the rest as shell, with the API key in reach.
       - name: Publish to Update API
         env:
           UPDATE_API_KEY: ${{ secrets.UPDATE_API_KEY }}
+          SLUG: ${{ inputs.slug }}
+          VERSION: ${{ inputs.version }}
+          RELEASE_NOTES: ${{ inputs.release_notes }}
+          REPOSITORY: ${{ github.repository }}
+          REQUIRES_WP: ${{ steps.metadata.outputs.requires_wp }}
+          TESTED_WP: ${{ steps.metadata.outputs.tested_wp }}
+          REQUIRES_PHP: ${{ steps.metadata.outputs.requires_php }}
         run: |
-          curl -i -X POST https://update.jcore.fi/v1/versions \
+          jq -n \
+            --arg slug "$SLUG" \
+            --arg version "$VERSION" \
+            --arg download_url "https://github.com/$REPOSITORY/releases/download/v$VERSION/$SLUG.zip" \
+            --arg changelog "$RELEASE_NOTES" \
+            --arg requires_wp "$REQUIRES_WP" \
+            --arg tested_wp "$TESTED_WP" \
+            --arg requires_php "$REQUIRES_PHP" \
+            '{slug: $slug, version: $version, download_url: $download_url, changelog: $changelog, requires_wp: $requires_wp, tested_wp: $tested_wp, requires_php: $requires_php}' \
+          | curl -i -X POST https://update.jcore.fi/v1/versions \
             -H "Content-Type: application/json" \
             -H "X-API-Key: $UPDATE_API_KEY" \
-            -d '{
-              "slug": "${{ inputs.slug }}",
-              "version": "${{ inputs.version }}",
-              "download_url": "https://github.com/${{ github.repository }}/releases/download/v${{ inputs.version }}/${{ inputs.slug }}.zip",
-              "changelog": ${{ toJson(inputs.release_notes) }},
-              "requires_wp": "${{ steps.metadata.outputs.requires_wp }}",
-              "tested_wp": "${{ steps.metadata.outputs.tested_wp }}",
-              "requires_php": "${{ steps.metadata.outputs.requires_php }}"
-            }'
+            --data-binary @-
 
       # 7. Publish to Dist Repo (Optional)
       - name: Publish to Dist Repo
