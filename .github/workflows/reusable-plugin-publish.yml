@@ -24,8 +24,13 @@ on:
         description: "Optional: Version of pnpm to use. If not set, uses packageManager in package.json."
         required: false
         type: string
+      dist_deploy:
+        description: "Push the unscoped sources to dist_repo for Composer installs. Off by default; needs dist_repo and DIST_REPO_SSH_KEY."
+        required: false
+        type: boolean
+        default: false
       dist_repo:
-        description: "Optional: SSH URL of a distribution repository to push built files to (e.g. git@github.com:org/repo-dist.git)"
+        description: "SSH URL of the distribution repository dist_deploy pushes to (e.g. git@git.jcore.fi:/srv/git/my-plugin.git)"
         required: false
         type: string
       slack_channel:
@@ -197,6 +202,10 @@ jobs:
           files: release/${{ inputs.slug }}.zip
 
       # 6. Notify Update API
+      # --fail-with-body makes an HTTP error (an unregistered slug, a bad
+      # API key) fail the job instead of passing with the error printed,
+      # while still showing the API's message. The steps after this one
+      # (dist repo, Slack) then don't run for a release sites can't see.
       # The release notes are commit subjects, so they are data: they reach
       # the shell only as environment variables, and jq builds the JSON.
       # Pasting them into the script would let a quote in a commit subject
@@ -221,23 +230,35 @@ jobs:
             --arg tested_wp "$TESTED_WP" \
             --arg requires_php "$REQUIRES_PHP" \
             '{slug: $slug, version: $version, download_url: $download_url, changelog: $changelog, requires_wp: $requires_wp, tested_wp: $tested_wp, requires_php: $requires_php}' \
-          | curl -i -X POST https://update.jcore.fi/v1/versions \
+          | curl --fail-with-body -sS -i -X POST https://update.jcore.fi/v1/versions \
             -H "Content-Type: application/json" \
             -H "X-API-Key: $UPDATE_API_KEY" \
             --data-binary @-
 
-      # 7. Publish to Dist Repo (Optional)
+      # 7. Publish to Dist Repo (opt-in with dist_deploy)
+      # Callers that still pass only dist_repo used to get a dist push. Say
+      # so in the run summary rather than skipping it silently.
+      - name: Dist deploy disabled
+        if: ${{ !inputs.dist_deploy && inputs.dist_repo != '' }}
+        run: |
+          echo "::warning::dist_repo is set but dist_deploy is false, so nothing was pushed to the dist repo. Add 'dist_deploy: true' to publish there."
+
       - name: Publish to Dist Repo
-        if: ${{ inputs.dist_repo != '' }}
+        if: ${{ inputs.dist_deploy }}
         shell: bash
         env:
           DIST_REPO: ${{ inputs.dist_repo }}
           DIST_REPO_SSH_KEY: ${{ secrets.DIST_REPO_SSH_KEY }}
           SSH_AUTH_SOCK: /tmp/ssh_agent.sock
         run: |
+          # dist_deploy is an explicit opt-in, so missing settings are errors.
+          if [ -z "$DIST_REPO" ]; then
+            echo "::error::dist_deploy is true but dist_repo is not set."
+            exit 1
+          fi
           if [ -z "$DIST_REPO_SSH_KEY" ]; then
-            echo "DIST_REPO_SSH_KEY is not set, skipping dist publish."
-            exit 0
+            echo "::error::dist_deploy is true but the DIST_REPO_SSH_KEY secret is not set."
+            exit 1
           fi
 
           if [ ! -f composer.json ]; then
