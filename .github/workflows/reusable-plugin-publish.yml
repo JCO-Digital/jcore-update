@@ -197,6 +197,10 @@ jobs:
           files: release/${{ inputs.slug }}.zip
 
       # 6. Notify Update API
+      # --fail-with-body makes an HTTP error (an unregistered slug, a bad
+      # API key) fail the job instead of passing with the error printed,
+      # while still showing the API's message. The steps after this one
+      # (dist repo, Slack) then don't run for a release sites can't see.
       # The release notes are commit subjects, so they are data: they reach
       # the shell only as environment variables, and jq builds the JSON.
       # Pasting them into the script would let a quote in a commit subject
@@ -221,7 +225,7 @@ jobs:
             --arg tested_wp "$TESTED_WP" \
             --arg requires_php "$REQUIRES_PHP" \
             '{slug: $slug, version: $version, download_url: $download_url, changelog: $changelog, requires_wp: $requires_wp, tested_wp: $tested_wp, requires_php: $requires_php}' \
-          | curl -i -X POST https://update.jcore.fi/v1/versions \
+          | curl --fail-with-body -sS -i -X POST https://update.jcore.fi/v1/versions \
             -H "Content-Type: application/json" \
             -H "X-API-Key: $UPDATE_API_KEY" \
             --data-binary @-
