@@ -182,15 +182,34 @@ jobs:
             zip -r release/${{ inputs.slug }}.zip . -x "release/*" ".git/*" ".github/*"
           fi
 
-      # 4. Extract metadata from the PHP file
+      # 4. Extract metadata from the plugin header and readme.txt
+      #
+      # Each value comes from the first file that has it, in the order
+      # WordPress and the update client (PluginUpdateHooks) use: "Tested up
+      # to" from readme.txt, because Plugin Check now rejects it in the plugin
+      # header; "Requires at least" and "Requires PHP" from the header, which
+      # is what WordPress enforces. The other file is the fallback, so older
+      # plugins that only have header lines keep working.
       - name: Extract metadata
         id: metadata
         env:
           PLUGIN_FILE: ${{ inputs.plugin_file }}
         run: |
-          echo "requires_wp=$(grep "Requires at least:" "$PLUGIN_FILE" | cut -d: -f2 | xargs)" >> $GITHUB_OUTPUT
-          echo "tested_wp=$(grep "Tested up to:" "$PLUGIN_FILE" | cut -d: -f2 | xargs)" >> $GITHUB_OUTPUT
-          echo "requires_php=$(grep "Requires PHP:" "$PLUGIN_FILE" | cut -d: -f2 | xargs)" >> $GITHUB_OUTPUT
+          field() {
+            local key="$1" file value
+            shift
+            for file in "$@"; do
+              [ -f "$file" ] || continue
+              value=$(grep -m1 -i "^[[:space:]*#]*${key}:" "$file" | cut -d: -f2- | tr -d '\r' | xargs)
+              if [ -n "$value" ]; then
+                echo "$value"
+                return
+              fi
+            done
+          }
+          echo "requires_wp=$(field 'Requires at least' "$PLUGIN_FILE" readme.txt)" >> "$GITHUB_OUTPUT"
+          echo "tested_wp=$(field 'Tested up to' readme.txt "$PLUGIN_FILE")" >> "$GITHUB_OUTPUT"
+          echo "requires_php=$(field 'Requires PHP' "$PLUGIN_FILE" readme.txt)" >> "$GITHUB_OUTPUT"
 
       # 5. Create GitHub Release
       - name: Create GitHub Release
