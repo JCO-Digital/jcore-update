@@ -154,33 +154,52 @@ jobs:
       # zip only matches it at the root. So a plugin that still ships a
       # .zipexclude keeps using it, and only a plugin that has deleted it --
       # having anchored its .distignore patterns with a leading slash -- gets
-      # the single-list behaviour. The .distignore path also assembles into a
-      # directory named after the slug first, so the zip carries the usual
-      # top-level plugin folder.
+      # the single-list behaviour.
+      #
+      # Every path assembles the plugin into .dist-build/<slug>/ and zips that,
+      # so the archive always has a top-level folder named after the slug. A
+      # flat zip makes WordPress name the installed folder after its random
+      # temp file (e.g. jcore-runner-KK3EGe-ww50wJxolpFdGEYU) instead.
       - name: Zip
+        env:
+          SLUG: ${{ inputs.slug }}
+          PLUGIN_FILE: ${{ inputs.plugin_file }}
         run: |
           set -e
-          mkdir -p release
+          rm -rf .dist-build release
+          mkdir -p release ".dist-build/$SLUG"
 
+          # Legacy exclude lists use zip's own pattern syntax, so build a flat
+          # zip with them as before and unpack it into the slug folder.
           if [ -f .zipexclude ]; then
-            zip -r release/${{ inputs.slug }}.zip . -x@.zipexclude
+            zip -qr release/flat.zip . -x@.zipexclude -x "release/*" ".dist-build/*"
           elif [ -f zip_exclude.txt ]; then
-            zip -r release/${{ inputs.slug }}.zip . -x@zip_exclude.txt
-          elif [ -f .distignore ]; then
-            rm -rf .dist-build
-            mkdir -p ".dist-build/${{ inputs.slug }}"
+            zip -qr release/flat.zip . -x@zip_exclude.txt -x "release/*" ".dist-build/*"
+          elif [ ! -f .distignore ]; then
+            zip -qr release/flat.zip . -x "release/*" ".dist-build/*" ".git/*" ".github/*"
+          fi
+
+          if [ -f release/flat.zip ]; then
+            unzip -q release/flat.zip -d ".dist-build/$SLUG"
+            rm release/flat.zip
+          else
             rsync -a \
               --exclude=.git/ \
               --exclude=.dist-build/ \
               --exclude=release/ \
               --exclude=.distignore \
               --exclude-from=.distignore \
-              ./ ".dist-build/${{ inputs.slug }}/"
-            ( cd .dist-build && zip -qr "../release/${{ inputs.slug }}.zip" "${{ inputs.slug }}" )
-            rm -rf .dist-build
-          else
-            zip -r release/${{ inputs.slug }}.zip . -x "release/*" ".git/*" ".github/*"
+              ./ ".dist-build/$SLUG/"
           fi
+
+          if [ ! -f ".dist-build/$SLUG/$PLUGIN_FILE" ]; then
+            echo "::error::$PLUGIN_FILE is missing from the zip contents"
+            exit 1
+          fi
+
+          ( cd .dist-build && zip -qr "../release/$SLUG.zip" "$SLUG" )
+          rm -rf .dist-build
+          unzip -l "release/$SLUG.zip" | head -n 8
 
       # 4. Extract metadata from the plugin header and readme.txt
       #
